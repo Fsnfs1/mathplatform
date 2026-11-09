@@ -45,6 +45,9 @@
     </div>
     <div class="d-flex align-items-center gap-2">
       <span id="studentInfoBadge" class="small text-light">未登入</span>
+      <button id="btnNavAnnounce" class="btn btn-sm btn-outline-warning text-warning position-relative d-none" onclick="AppUI.openAnnouncementsModal()" title="查看通知公告">
+        📢 公告 <span id="announceUnreadBadge" class="badge rounded-pill bg-danger d-none">0</span>
+      </button>
       <span id="pointsQuickBadge" class="badge bg-info text-dark" style="cursor:pointer" onclick="AppUI.openPointsApp()">💎 0 積分</span>
       <button id="btnNavHub" class="btn btn-sm btn-outline-light d-none" onclick="AppUI.showScreen('screen-hub')">返回大廳</button>
       <button id="btnLogout" class="btn btn-sm btn-outline-secondary text-light d-none" onclick="AppUI.logout()">切換帳號</button>
@@ -121,6 +124,15 @@
         <input class="form-check-input" type="checkbox" id="arenaAllowSwitch" onchange="AppUI.toggleArenaAllow(this.checked)">
         <label class="form-check-label fw-semibold" for="arenaAllowSwitch">⚔️ 允許網絡擂台賽配對</label>
       </div>
+    </div>
+
+    <!-- Active Announcement Alert Banner -->
+    <div id="hubAnnounceBanner" class="alert alert-warning border-warning shadow-sm d-none mb-3 py-2 px-3 d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-2 text-truncate me-2">
+        <span class="badge bg-danger text-white">置頂公告</span>
+        <strong id="hubAnnounceBannerTitle" class="text-dark text-truncate"></strong>
+      </div>
+      <button class="btn btn-sm btn-dark text-nowrap fw-semibold px-3" onclick="AppUI.openAnnouncementsModal()">查看詳情</button>
     </div>
 
     <div class="hub-grid mb-4">
@@ -383,6 +395,22 @@
         <button id="btnArenaAgree" class="btn btn-warning fw-bold px-4" onclick="AppUI.agreeArenaMatch()">✋ 同意配對邀請</button>
         <button id="btnArenaEnterMatch" class="btn btn-danger fw-bold px-4 d-none" onclick="AppUI.enterArenaMatchNow()">🔥 點擊進入擂台賽！</button>
         <button class="btn btn-outline-secondary" onclick="document.getElementById('modalArena').classList.remove('show')">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Announcements & Notifications Modal -->
+  <div id="modalAnnouncements" class="modal-backdrop-custom">
+    <div class="modal-card" style="max-width:620px;">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0">📢 課後教學通知與公告</h5>
+        <button type="button" class="btn-close" onclick="document.getElementById('modalAnnouncements').classList.remove('show')"></button>
+      </div>
+      <div id="announceListContainer" class="d-flex flex-column gap-3 mb-3" style="max-height:60vh; overflow-y:auto;">
+        <!-- Dynamic Announcement Cards -->
+      </div>
+      <div class="d-flex justify-content-end">
+        <button class="btn btn-primary btn-sm fw-bold px-4" onclick="document.getElementById('modalAnnouncements').classList.remove('show')">關閉</button>
       </div>
     </div>
   </div>
@@ -914,12 +942,103 @@
           return;
         }
 
+        // Load and refresh announcements for student's class
+        const btnAnnounce = document.getElementById('btnNavAnnounce');
+        if (btnAnnounce) btnAnnounce.classList.remove('d-none');
+        checkAnnouncements();
+
         // First-login D6 Research Informed Consent check for regular students
         const consentRaw = localStorage.getItem('MP_V2_CONSENT_' + sid);
         if (!consentRaw) {
           document.getElementById('modalConsent').classList.add('show');
         }
         showScreen('screen-hub');
+      }
+
+      function checkAnnouncements() {
+        if (!currentStudent) return;
+        const cls = currentStudent.classID;
+        const sid = cls + '_' + currentStudent.studentID;
+        let list = [];
+        if (window.MathPlatformRegistry && typeof MathPlatformRegistry.getAnnouncementsForClass === 'function') {
+          list = MathPlatformRegistry.getAnnouncementsForClass(cls);
+        }
+        const readIds = (window.MathCoreStorage && typeof MathCoreStorage.getReadAnnouncementIds === 'function')
+          ? MathCoreStorage.getReadAnnouncementIds(sid)
+          : [];
+        const unreadCount = list.filter(a => !readIds.includes(String(a.id))).length;
+
+        const badgeEl = document.getElementById('announceUnreadBadge');
+        if (badgeEl) {
+          if (unreadCount > 0) {
+            badgeEl.textContent = unreadCount;
+            badgeEl.classList.remove('d-none');
+          } else {
+            badgeEl.classList.add('d-none');
+          }
+        }
+
+        // Show banner on hub for highest priority unread announcement
+        const bannerEl = document.getElementById('hubAnnounceBanner');
+        const bannerTitle = document.getElementById('hubAnnounceBannerTitle');
+        const unreadList = list.filter(a => !readIds.includes(String(a.id)));
+        if (unreadList.length > 0 && bannerEl && bannerTitle) {
+          bannerTitle.textContent = unreadList[0].title;
+          bannerEl.classList.remove('d-none');
+        } else if (bannerEl) {
+          bannerEl.classList.add('d-none');
+        }
+      }
+
+      function openAnnouncementsModal() {
+        if (!currentStudent) return;
+        const cls = currentStudent.classID;
+        const sid = cls + '_' + currentStudent.studentID;
+        let list = [];
+        if (window.MathPlatformRegistry && typeof MathPlatformRegistry.getAnnouncementsForClass === 'function') {
+          list = MathPlatformRegistry.getAnnouncementsForClass(cls);
+        }
+        const readIds = (window.MathCoreStorage && typeof MathCoreStorage.getReadAnnouncementIds === 'function')
+          ? MathCoreStorage.getReadAnnouncementIds(sid)
+          : [];
+
+        const container = document.getElementById('announceListContainer');
+        if (!container) return;
+        if (list.length === 0) {
+          container.innerHTML = '<div class="text-center text-muted py-4">目前暫無任何新公告</div>';
+        } else {
+          container.innerHTML = list.map(a => {
+            const isRead = readIds.includes(String(a.id));
+            const priorityBadge = a.priority === 'urgent'
+              ? '<span class="badge bg-danger">重要置頂</span>'
+              : (a.priority === 'tip' ? '<span class="badge bg-secondary">溫馨提示</span>' : '<span class="badge bg-primary">普通</span>');
+            const unreadBadge = !isRead ? '<span class="badge bg-warning text-dark">NEW 未讀</span>' : '';
+            const pubDate = a.publishTs ? new Date(a.publishTs).toLocaleDateString() : '';
+            return `
+              <div class="border rounded-3 p-3 ${isRead ? 'bg-light' : 'bg-white border-primary shadow-sm'}">
+                <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                  <div>${priorityBadge} ${unreadBadge} <strong class="ms-1">${esc(a.title)}</strong></div>
+                  <small class="text-muted">${pubDate} · ${esc(a.author || '老師')}</small>
+                </div>
+                <div class="text-secondary small my-2" style="white-space:pre-wrap;">${esc(a.content)}</div>
+                ${!isRead ? `<button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:12px;" onclick="AppUI.markNoticeRead('${esc(a.id)}')">標記已讀 ✓</button>` : '<span class="small text-success">已讀 ✓</span>'}
+              </div>
+            `;
+          }).join('');
+        }
+
+        // Mark all currently rendered as read automatically or allow manual mark
+        document.getElementById('modalAnnouncements').classList.add('show');
+      }
+
+      function markNoticeRead(annId) {
+        if (!currentStudent || !annId) return;
+        const sid = currentStudent.classID + '_' + currentStudent.studentID;
+        if (window.MathCoreStorage && typeof MathCoreStorage.markAnnouncementRead === 'function') {
+          MathCoreStorage.markAnnouncementRead(sid, annId);
+        }
+        checkAnnouncements();
+        openAnnouncementsModal();
       }
 
       function logout() {
@@ -1986,6 +2105,9 @@
         openCheckinModal: openCheckinModal,
         submitCheckinModal: submitCheckinModal,
         openReviewApp: openReviewApp,
+        openAnnouncementsModal: openAnnouncementsModal,
+        markNoticeRead: markNoticeRead,
+        checkAnnouncements: checkAnnouncements,
         startWrongRetest: startWrongRetest,
         askTeacherCurrentQuestion: askTeacherCurrentQuestion,
         submitHelpRequest: submitHelpRequest,

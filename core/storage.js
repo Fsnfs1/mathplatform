@@ -33,6 +33,8 @@
       activeQuizKey: 'MP_V2_ACTIVE_QUIZ',
       wrongQuestionsPrefix: 'MP_V2_WRONG_QUESTIONS_',
       netwatchTransitionsKey: 'MP_V2_NETWATCH_TRANSITIONS',
+      announcementsKey: 'MP_V2_ANNOUNCEMENTS',
+      readNoticesPrefix: 'MP_V2_READ_NOTICES_',
     },
     (CONFIG && CONFIG.storageKeys) || {}
   );
@@ -415,6 +417,34 @@
     return item;
   }
 
+  function getReadNoticeKey(sid) {
+    return KEYS.readNoticesPrefix + String(sid || 'guest');
+  }
+
+  function getReadAnnouncementIds(sid) {
+    const val = getItem(getReadNoticeKey(sid), []);
+    return Array.isArray(val) ? val : [];
+  }
+
+  function markAnnouncementRead(sid, annId) {
+    if (!annId) return;
+    const key = getReadNoticeKey(sid);
+    const set = new Set(getReadAnnouncementIds(sid));
+    set.add(String(annId));
+    setItem(key, Array.from(set));
+  }
+
+  function getLocalAnnouncements() {
+    const val = getItem(KEYS.announcementsKey, null);
+    return Array.isArray(val) ? val : null;
+  }
+
+  function saveLocalAnnouncements(list) {
+    if (Array.isArray(list)) {
+      setItem(KEYS.announcementsKey, list);
+    }
+  }
+
   function clearAll() {
     memStore.clear();
     const ls = getLocalStorage();
@@ -448,6 +478,10 @@
     saveWrongQuestion: saveWrongQuestion,
     getWrongQuestions: getWrongQuestions,
     markWrongQuestionRetested: markWrongQuestionRetested,
+    getReadAnnouncementIds: getReadAnnouncementIds,
+    markAnnouncementRead: markAnnouncementRead,
+    getLocalAnnouncements: getLocalAnnouncements,
+    saveLocalAnnouncements: saveLocalAnnouncements,
     openIndexedDB: openIndexedDB,
     clearAll: clearAll,
   };

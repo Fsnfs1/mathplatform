@@ -196,6 +196,50 @@
       </div>
     </div>
 
+    <!-- 3.5 Announcements Management & Publish Console (Phase 1) -->
+    <div id="secAnnouncements" class="section-card">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold mb-0">📢 課後教學公告發布與管理（班級定向廣播）</h5>
+        <span class="badge bg-primary">即時推播學生端</span>
+      </div>
+      <p class="text-muted small mb-3">發布作業提醒、隨堂小測通知、放假或網絡指引。發布後對應班級學生端將即刻顯示紅點徽章與首頁置頂橫幅。</p>
+      <div class="row g-2 mb-2">
+        <div class="col-md-5">
+          <label class="form-label small fw-semibold">公告標題</label>
+          <input id="annTitleInput" class="form-control form-control-sm" placeholder="例: 【小測通知】週四晚間 8 點高一數學自適應隨堂測" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">優先等級</label>
+          <select id="annPrioritySelect" class="form-select form-select-sm">
+            <option value="urgent">🔴 重要置頂 (紅色標籤)</option>
+            <option value="normal" selected>🔵 一般通知 (藍色標籤)</option>
+            <option value="tip">⚪ 溫馨提示 (灰色標籤)</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">目標班級（多選或廣播）</label>
+          <div class="d-flex gap-2 pt-1 small">
+            <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 ann-cls-cb" value="4C" checked />4C</label>
+            <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 ann-cls-cb" value="4D" checked />4D</label>
+            <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 ann-cls-cb" value="5B" checked />5B</label>
+            <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 ann-cls-cb" value="5C" checked />5C</label>
+          </div>
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold">公告詳細內文</label>
+        <textarea id="annContentInput" class="form-control form-control-sm" rows="3" placeholder="請輸入給同學們的具體公告或課後任務內容..."></textarea>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="small text-muted">有效期限：預設 30 天內有效</div>
+        <button class="btn btn-primary btn-sm fw-bold px-4" onclick="TeacherApp.publishAnnouncement()">📢 立即發布公告</button>
+      </div>
+      <div class="border-top pt-2">
+        <div class="small fw-bold text-secondary mb-2">現行有效公告列表：</div>
+        <div id="teacherAnnounceList" class="small d-flex flex-column gap-2"></div>
+      </div>
+    </div>
+
     <!-- 4. Sustainable Registry Config Generator (Section 八 & 九: Add Bank/Quiz/Bonus/Game/Class with Zero Core Code Edits) -->
     <div id="secRegistryExt" class="section-card">
       <h5 class="fw-bold mb-2">🌱 可持續發展擴展中心（新增題庫 / 下次小測 / 加分規則 / 遊戲 / 班級）</h5>
@@ -438,6 +482,7 @@
         renderTuneLog();
         renderQaList();
         renderMallOrders();
+        renderAnnounceList();
       }
 
       function populateStudentList() {
@@ -548,7 +593,85 @@
           : '最近微調記錄（僅後台可見）：' + audit.slice(0, 5).map(a => `<span class="badge bg-light text-dark border me-1">${esc(a.packId)} · ${esc(a.sid)} ➔ ${Number(a.newScore)}分</span>`).join('');
       }
 
-      // D2 / A7: Student Help Q&A Reply
+      // Announcements management in Teacher Studio
+      function renderAnnounceList() {
+        const box = document.getElementById('teacherAnnounceList');
+        if (!box) return;
+        const list = (window.MathPlatformRegistry && Array.isArray(MathPlatformRegistry.announcements))
+          ? MathPlatformRegistry.announcements
+          : [];
+        if (list.length === 0) {
+          box.innerHTML = '<div class="text-muted">尚無發布任何公告</div>';
+          return;
+        }
+        box.innerHTML = list.map(a => {
+          const clsBadges = (a.targetClasses || ['*']).map(c => `<span class="badge bg-secondary me-1">${esc(c)}</span>`).join('');
+          const priorityBadge = a.priority === 'urgent'
+            ? '<span class="badge bg-danger">重要置頂</span>'
+            : (a.priority === 'tip' ? '<span class="badge bg-secondary">提示</span>' : '<span class="badge bg-primary">普通</span>');
+          const dateStr = a.publishTs ? new Date(a.publishTs).toLocaleDateString() : '';
+          return `
+            <div class="border rounded p-2 bg-white d-flex justify-content-between align-items-center">
+              <div>
+                ${priorityBadge} <strong class="ms-1">${esc(a.title)}</strong>
+                <div class="text-muted" style="font-size:12px;">受眾：${clsBadges} · 發布於 ${dateStr}</div>
+              </div>
+              <button class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size:12px;" onclick="TeacherApp.deleteAnnouncement('${esc(a.id)}')">刪除</button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function publishAnnouncement() {
+        const title = document.getElementById('annTitleInput').value.trim();
+        const content = document.getElementById('annContentInput').value.trim();
+        if (!title || !content) {
+          alert('請輸入公告標題與詳細內容！');
+          return;
+        }
+        const priority = document.getElementById('annPrioritySelect').value;
+        const targetClasses = [];
+        document.querySelectorAll('.ann-cls-cb:checked').forEach(cb => targetClasses.push(cb.value));
+        if (targetClasses.length === 0) {
+          alert('請至少勾選一個發布班級！');
+          return;
+        }
+
+        const newAnn = {
+          id: 'ann_' + Date.now(),
+          title: title,
+          content: content,
+          priority: priority,
+          targetClasses: targetClasses,
+          publishTs: Date.now(),
+          expireTs: Date.now() + 86400000 * 30,
+          isPinned: priority === 'urgent',
+          author: '教師管理員'
+        };
+
+        if (window.MathPlatformRegistry && typeof MathPlatformRegistry.registerAnnouncement === 'function') {
+          MathPlatformRegistry.registerAnnouncement(newAnn);
+        }
+        if (window.MathCoreStorage && typeof MathCoreStorage.saveLocalAnnouncements === 'function') {
+          MathCoreStorage.saveLocalAnnouncements(MathPlatformRegistry.announcements);
+        }
+
+        document.getElementById('annTitleInput').value = '';
+        document.getElementById('annContentInput').value = '';
+        renderAnnounceList();
+        alert('✅ 公告已成功發布並同步至註冊表！');
+      }
+
+      function deleteAnnouncement(annId) {
+        if (!confirm('確定要撤銷此公告嗎？')) return;
+        if (window.MathPlatformRegistry && Array.isArray(MathPlatformRegistry.announcements)) {
+          MathPlatformRegistry.announcements = MathPlatformRegistry.announcements.filter(a => String(a.id) !== String(annId));
+          if (window.MathCoreStorage && typeof MathCoreStorage.saveLocalAnnouncements === 'function') {
+            MathCoreStorage.saveLocalAnnouncements(MathPlatformRegistry.announcements);
+          }
+        }
+        renderAnnounceList();
+      }
       function renderQaList() {
         const list = JSON.parse(localStorage.getItem('MP_V2_HELP_QA') || '[]');
         const box = document.getElementById('teacherQaList');
@@ -722,6 +845,9 @@
         saveGlobalSettings: saveGlobalSettings,
         applyScoreTune: applyScoreTune,
         saveQaReply: saveQaReply,
+        publishAnnouncement: publishAnnouncement,
+        deleteAnnouncement: deleteAnnouncement,
+        renderAnnounceList: renderAnnounceList,
         registerExtensionItem: registerExtensionItem,
         exportAnonymizedResearchCsv: exportAnonymizedResearchCsv,
         generateClassRandomKeys: generateClassRandomKeys

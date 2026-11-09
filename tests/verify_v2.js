@@ -269,7 +269,35 @@ async function runAllTests() {
   assert.strictEqual(faceDirectSess.faceLoginVerified, true, 'Face login persists faceLoginVerified: true for automatic trace exemption');
   console.log('[PASS] 9. A1 Gate Upgrade (1:N Face Scan + Ambiguous Candidate Password Disambiguation + Dual Credentials + Auto Face Trace)');
 
-  console.log('=== ALL TESTS PASSED (9/9) ===');
+  // 10. Phase 0 & Phase 1 Announcements Engine & Canonical index.html Verification
+  const indexHtml = fs.readFileSync(__dirname + '/../index.html', 'utf8');
+  assert.ok(indexHtml.includes('app.html'), 'index.html must route to student app');
+  assert.ok(indexHtml.includes('teacher.html'), 'index.html must route to teacher studio');
+
+  // Verify Announcements in registry
+  const annList4C = registry.getAnnouncementsForClass('4C');
+  assert.ok(Array.isArray(annList4C) && annList4C.length > 0, 'Class 4C must receive announcements');
+  
+  // Register dynamic announcement
+  const newAnn = registry.registerAnnouncement({
+    title: '【測試公告】週四小測安排',
+    content: '請準時參加',
+    priority: 'urgent',
+    targetClasses: ['4C', '4D']
+  });
+  assert.ok(newAnn && newAnn.id, 'Announcement registration generates id');
+  const annList4D = registry.getAnnouncementsForClass('4D');
+  assert.ok(annList4D.some(a => a.id === newAnn.id), 'Class 4D receives targeted announcement');
+  const annList5B = registry.getAnnouncementsForClass('5B');
+  assert.ok(!annList5B.some(a => a.id === newAnn.id), 'Class 5B does NOT receive 4CD targeted announcement');
+
+  // Test Storage Read Tracking
+  storage.markAnnouncementRead('4C_1', newAnn.id);
+  const readList = storage.getReadAnnouncementIds('4C_1');
+  assert.ok(readList.includes(newAnn.id), 'markAnnouncementRead properly records read id');
+  console.log('[PASS] 10. Canonical index.html & Targeted Announcements Engine (Phase 0 & 1)');
+
+  console.log('=== ALL TESTS PASSED (10/10) ===');
 }
 
 runAllTests().catch(err => {
