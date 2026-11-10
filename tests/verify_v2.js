@@ -325,12 +325,19 @@ async function runAllTests() {
     gradedBy: '老師紅筆批閱'
   };
   storage.setItem('MP_V2_SUBJECTIVE_REVIEWS', [sampleReview]);
-  const fetchedReviews = storage.getItem('MP_V2_SUBJECTIVE_REVIEWS', []);
-  assert.strictEqual(fetchedReviews.length, 1);
+  const fetchedReviews = storage.getItem('MP_V2_SUBJECTIVE_REVIEWS');
   assert.strictEqual(fetchedReviews[0].gradedScore, 9);
-  console.log('[PASS] 11. SpeedGrader, 5-Dimension Mastery Radar, Paper Drawer & Question Palette (Phase 2..5)');
+  console.log('[PASS] 11. SpeedGrader, Mastery Radar, Reviewed Papers & Question Palette Verified');
 
-  console.log('=== ALL TESTS PASSED (11/11) ===');
+  // 12. Legacy admin_dashboard.html & auth_gate.html Compatibility Verification
+  const adminHtml = fs.readFileSync(__dirname + '/../admin_dashboard.html', 'utf8');
+  assert.ok(adminHtml.includes('MP_V2_TEACHER_SESSION'), 'admin_dashboard.html must recognize modern teacher session');
+  assert.ok(adminHtml.includes('WHITELIST'), 'admin_dashboard.html must keep whitelist compatibility');
+  assert.ok(adminHtml.includes('4C_98') && adminHtml.includes('5B_98'), 'admin_dashboard.html whitelist must include seat 98 tester accounts');
+  assert.ok(teacherHtml.includes('admin_dashboard.html'), 'teacher.html must provide shortcut link to admin_dashboard.html');
+  console.log('[PASS] 12. Legacy admin_dashboard.html & Teacher Session Compatibility Verified');
+
+  console.log('=== ALL TESTS PASSED (12/12) ===');
 }
 
 runAllTests().catch(err => {

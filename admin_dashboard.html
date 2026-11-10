@@ -6,15 +6,34 @@
 
   <meta charset="UTF-8">
 
-  <!-- Target Pages Anti-Bypass Guard (Strict 7-Person Whitelist) -->
+  <!-- Target Pages Anti-Bypass Guard (Strict 7-Person Whitelist + Modern Teacher Session Support) -->
   <script>
     (function() {
-      const WHITELIST = ['4C_99', '4D_99', '5B_99', '5C_99', '4C_6', '4C_29', '4D_21', '4D_15', '5B_24', '5B_10'];
+      const WHITELIST = ['4C_99', '4D_99', '5B_99', '5C_99', '4C_98', '4D_98', '5B_98', '5C_98', '4C_6', '4C_29', '4D_21', '4D_15', '5B_24', '5B_10'];
       const rawToken = sessionStorage.getItem('AUTH_GATE_TOKEN');
       let isAuthorized = false;
       let authUser = null;
 
-      if (rawToken) {
+      // 1. Support modern teacher session from teacher.html (MP_V2_TEACHER_SESSION)
+      try {
+        const rawTeacherSess = localStorage.getItem('MP_V2_TEACHER_SESSION');
+        if (rawTeacherSess) {
+          const tSess = JSON.parse(rawTeacherSess);
+          if (tSess && tSess.token && (tSess.role === 'teacher' || tSess.role === 'class_rep')) {
+            isAuthorized = true;
+            authUser = {
+              key: tSess.username || 'teacher_admin',
+              name: tSess.role === 'class_rep' ? `${tSess.classID} 科代表 ${tSess.name}` : (tSess.username || '教師管理員'),
+              classID: tSess.classID || 'ALL',
+              studentID: tSess.studentID || 99,
+              isTeacherV2: true
+            };
+          }
+        }
+      } catch (_) {}
+
+      // 2. Support legacy auth gate token (AUTH_GATE_TOKEN)
+      if (!isAuthorized && rawToken) {
         try {
           authUser = JSON.parse(rawToken);
           const key = (authUser.classID ? (authUser.classID + '_') : '') + (authUser.studentID || '');
