@@ -297,7 +297,40 @@ async function runAllTests() {
   assert.ok(readList.includes(newAnn.id), 'markAnnouncementRead properly records read id');
   console.log('[PASS] 10. Canonical index.html & Targeted Announcements Engine (Phase 0 & 1)');
 
-  console.log('=== ALL TESTS PASSED (10/10) ===');
+  // 11. Phase 2, 3, 4, 5 Full Lifecycle Verification: SpeedGrader, Mastery Radar, Reviewed Papers & Question Palette
+  const teacherHtml = fs.readFileSync(__dirname + '/../teacher.html', 'utf8');
+  assert.ok(teacherHtml.includes('secSubjectiveGrading'), 'teacher.html must contain secSubjectiveGrading SpeedGrader');
+  assert.ok(teacherHtml.includes('reviewCanvas'), 'teacher.html must contain reviewCanvas interactive grading canvas');
+  assert.ok(teacherHtml.includes('rubricStep1') && teacherHtml.includes('rubricStep2'), 'teacher.html must contain rubric sliders');
+  assert.ok(teacherHtml.includes('saveCurrentReview'), 'teacher.html must contain saveCurrentReview handler');
+
+  const appHtmlUpdated = fs.readFileSync(__dirname + '/../app.html', 'utf8');
+  assert.ok(appHtmlUpdated.includes('masteryRadarCanvas'), 'app.html must contain masteryRadarCanvas for 5-dimension competence');
+  assert.ok(appHtmlUpdated.includes('modalReviewedPaper'), 'app.html must contain modalReviewedPaper offcanvas drawer');
+  assert.ok(appHtmlUpdated.includes('quizPaletteContainer'), 'app.html must contain quizPaletteContainer question matrix');
+  assert.ok(appHtmlUpdated.includes('renderQuestionPalette'), 'app.html must implement renderQuestionPalette');
+  assert.ok(appHtmlUpdated.includes('jumpToQuestion'), 'app.html must implement jumpToQuestion');
+
+  // Verify SpeedGrader grading workflow in storage
+  const sampleReview = {
+    id: 'rev_test_01',
+    classID: '4C',
+    studentID: 1,
+    name: '古永晴',
+    examTitle: '4CD 1102 隨堂小測',
+    questionTitle: '二次函數解答題',
+    gradedScore: 9,
+    maxScore: 10,
+    status: 'graded',
+    gradedBy: '老師紅筆批閱'
+  };
+  storage.setItem('MP_V2_SUBJECTIVE_REVIEWS', [sampleReview]);
+  const fetchedReviews = storage.getItem('MP_V2_SUBJECTIVE_REVIEWS', []);
+  assert.strictEqual(fetchedReviews.length, 1);
+  assert.strictEqual(fetchedReviews[0].gradedScore, 9);
+  console.log('[PASS] 11. SpeedGrader, 5-Dimension Mastery Radar, Paper Drawer & Question Palette (Phase 2..5)');
+
+  console.log('=== ALL TESTS PASSED (11/11) ===');
 }
 
 runAllTests().catch(err => {

@@ -240,6 +240,109 @@
       </div>
     </div>
 
+    <!-- 3.6 SpeedGrader 主觀題照片雙屏批改中控台 (Phase 2: Canvas LMS 對標) -->
+    <div id="secSubjectiveGrading" class="section-card border-success">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold mb-0 text-success">✍️ SpeedGrader 主觀題與手寫照片審閱工作台</h5>
+        <span class="badge bg-success" id="pendingReviewsBadge">0 份待批閱</span>
+      </div>
+      <p class="text-muted small mb-3">
+        對標 Canvas LMS SpeedGrader 模式。聚合學生上傳的主觀解答題與手寫草稿照片，左側提供高清旋轉/對比度反轉/紅筆標註塗鴉，右側分步量表打分與快捷評語。
+      </p>
+
+      <div class="row g-2 align-items-center mb-3">
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold mb-1">班別過濾</label>
+          <select id="reviewClassFilter" class="form-select form-select-sm" onchange="TeacherApp.loadReviewQueue()">
+            <option value="ALL">全部班級</option>
+            <option value="4C">4C 班</option>
+            <option value="4D">4D 班</option>
+            <option value="5B">5B 班</option>
+            <option value="5C">5C 班</option>
+          </select>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small fw-semibold mb-1">待批工單隊列（學生 / 題目）</label>
+          <select id="reviewQueueSelect" class="form-select form-select-sm" onchange="TeacherApp.selectReviewItem()"></select>
+        </div>
+        <div class="col-md-4 d-flex gap-2 pt-3">
+          <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="TeacherApp.prevReviewItem()">◀ 上一位 (J)</button>
+          <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="TeacherApp.nextReviewItem()">下一位 (K) ▶</button>
+          <button class="btn btn-outline-primary btn-sm" onclick="TeacherApp.loadReviewQueue()">🔄 刷新隊列</button>
+        </div>
+      </div>
+
+      <!-- SpeedGrader 雙屏主視圖 -->
+      <div id="speedGraderContainer" class="border rounded-3 p-3 bg-light d-none">
+        <div class="row g-3">
+          <!-- 左屏：畫布照片與標註工具 -->
+          <div class="col-lg-7">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong id="reviewStudentTitle" class="text-dark small">4C 班 1 號 - 解答照片</strong>
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-dark" onclick="TeacherApp.rotateReviewImage()" title="向右旋轉 90 度">🔄 旋轉</button>
+                <button type="button" class="btn btn-outline-dark" onclick="TeacherApp.toggleImageInvert()" title="反轉對比度（黑白反相便於辨識字跡）">🌓 反相</button>
+                <button type="button" class="btn btn-outline-danger" id="btnPenRed" onclick="TeacherApp.setCanvasTool('red_pen')">🖊️ 紅筆標註</button>
+                <button type="button" class="btn btn-outline-secondary" onclick="TeacherApp.clearCanvasAnnotations()">🧹 清除標註</button>
+              </div>
+            </div>
+            <div class="position-relative border rounded bg-white overflow-hidden text-center" style="min-height:360px; max-height:500px; display:flex; align-items:center; justify-content:center;">
+              <canvas id="reviewCanvas" style="max-width:100%; max-height:480px; object-fit:contain; cursor:crosshair;"></canvas>
+            </div>
+            <div class="small text-muted mt-1">💡 提示：按住鼠標可在學生手寫照片上打勾、畫叉或圈選錯誤步驟。</div>
+          </div>
+
+          <!-- 右屏：評分量表 (Rubric) 與評語 -->
+          <div class="col-lg-5">
+            <div class="bg-white p-3 rounded border h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
+                  <h6 class="fw-bold mb-0 text-primary" id="reviewQuestionTitle">題目評分量表</h6>
+                  <span class="badge bg-primary fs-6" id="reviewCurrentScoreBadge">得分: 0 / 10</span>
+                </div>
+                <div class="mb-3 small text-secondary" id="reviewStemSnippet" style="max-height:80px; overflow-y:auto;">
+                  題幹：請寫出函數的極值與定義域求解過程...
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">步驟 1：公式列式與參數代入 (0 - 4分)</label>
+                  <input type="range" class="form-range" id="rubricStep1" min="0" max="4" value="4" oninput="TeacherApp.calcReviewScore()">
+                  <div class="d-flex justify-content-between text-muted" style="font-size:11px;">
+                    <span>0分</span><span>2分</span><span>4分</span>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">步驟 2：邏輯運算與最後結論 (0 - 6分)</label>
+                  <input type="range" class="form-range" id="rubricStep2" min="0" max="6" value="5" oninput="TeacherApp.calcReviewScore()">
+                  <div class="d-flex justify-content-between text-muted" style="font-size:11px;">
+                    <span>0分</span><span>3分</span><span>6分</span>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label small fw-semibold">教師評語反饋</label>
+                  <textarea id="reviewCommentInput" class="form-control form-control-sm" rows="3" placeholder="例如：步驟規範清晰，第二問計算粗心漏寫負號..."></textarea>
+                  <div class="d-flex gap-1 mt-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:11px;" onclick="TeacherApp.insertQuickComment('解法極為規範，思路清晰！')">+ 規範清晰</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:11px;" onclick="TeacherApp.insertQuickComment('符號書寫有誤，注意定義域限制。')">+ 符號有誤</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:11px;" onclick="TeacherApp.insertQuickComment('計算過程粗心，請重新複核步驟二。')">+ 計算粗心</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pt-2 border-top">
+                <button class="btn btn-success w-100 fw-bold py-2" onclick="TeacherApp.saveCurrentReview()">💾 保存批閱結果並跳轉下一份 (Enter)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="speedGraderEmpty" class="text-center text-muted py-4 border rounded bg-white">
+        目前無待批閱的主觀題工單，全部同學作答已批改完成 ✓
+      </div>
+    </div>
+
     <!-- 4. Sustainable Registry Config Generator (Section 八 & 九: Add Bank/Quiz/Bonus/Game/Class with Zero Core Code Edits) -->
     <div id="secRegistryExt" class="section-card">
       <h5 class="fw-bold mb-2">🌱 可持續發展擴展中心（新增題庫 / 下次小測 / 加分規則 / 遊戲 / 班級）</h5>
@@ -483,6 +586,8 @@
         renderQaList();
         renderMallOrders();
         renderAnnounceList();
+        initCanvasDrawing();
+        loadReviewQueue();
       }
 
       function populateStudentList() {
@@ -672,6 +777,296 @@
         }
         renderAnnounceList();
       }
+
+      // === SpeedGrader Subjective Review Engine (Phase 2) ===
+      let reviewQueue = [];
+      let currentReviewIndex = 0;
+      let reviewImageRotation = 0;
+      let reviewImageInverted = false;
+      let isCanvasDrawing = false;
+      let canvasTool = 'red_pen';
+      let currentLoadedImg = null;
+
+      function getSampleReviews() {
+        return [
+          {
+            id: 'rev_4C_01_q7',
+            classID: '4C',
+            studentID: 1,
+            name: '古永晴',
+            examTitle: '4CD 1102 隨堂小測',
+            questionId: 'q_quad_sol_01',
+            questionTitle: '第 7 題：二次函數配方與定義域求解 (主觀解答題)',
+            stemSnippet: '設 f(x) = -2x^2 + 8x - 3，請求出其對稱軸、頂點坐標及當 x ∈ [0, 3] 時的最大值與最小值。要求寫出詳細求解推導步驟。',
+            photoUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420" style="background:%23fffdf5"><rect x="20" y="20" width="560" height="380" fill="none" stroke="%23cbd5e1" stroke-dasharray="4"/><text x="40" y="60" font-family="sans-serif" font-size="16" fill="%230f172a">【學生手寫作答草稿紙】4C 01 古永晴</text><text x="40" y="110" font-family="serif" font-size="15" fill="%23334155">解：原式 f(x) = -2(x^2 - 4x) - 3</text><text x="75" y="150" font-family="serif" font-size="15" fill="%23334155">= -2(x - 2)^2 + 8 - 3 = -2(x - 2)^2 + 5</text><text x="40" y="200" font-family="serif" font-size="15" fill="%23334155">∴ 對稱軸 x = 2，頂點坐標 (2, 5)</text><text x="40" y="250" font-family="serif" font-size="15" fill="%23334155">當 x ∈ [0, 3] 時：</text><text x="40" y="290" font-family="serif" font-size="15" fill="%23334155">f(2) = 5 (最大值)</text><text x="40" y="330" font-family="serif" font-size="15" fill="%23334155">f(0) = -3, f(3) = 3 ∴ 最小值為 -3。</text></svg>',
+            step1Score: 4,
+            step2Score: 6,
+            maxScore: 10,
+            comment: '步驟規範，頂點與區間極值計算正確。',
+            status: 'pending'
+          },
+          {
+            id: 'rev_4D_03_q7',
+            classID: '4D',
+            studentID: 3,
+            name: '李澤榮',
+            examTitle: '4CD 1102 隨堂小測',
+            questionId: 'q_quad_sol_01',
+            questionTitle: '第 7 題：二次函數配方與定義域求解 (主觀解答題)',
+            stemSnippet: '設 f(x) = -2x^2 + 8x - 3，請求出其對稱軸、頂點坐標及當 x ∈ [0, 3] 時的最大值與最小值。要求寫出詳細求解推導步驟。',
+            photoUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420" style="background:%23fffdf5"><rect x="20" y="20" width="560" height="380" fill="none" stroke="%23cbd5e1" stroke-dasharray="4"/><text x="40" y="60" font-family="sans-serif" font-size="16" fill="%230f172a">【學生手寫作答草稿紙】4D 03 李澤榮</text><text x="40" y="110" font-family="serif" font-size="15" fill="%23334155">解：f(x) = -2(x^2 - 4x) - 3</text><text x="75" y="150" font-family="serif" font-size="15" fill="%23334155">= -2(x - 2)^2 + 4 - 3 (符號常數項錯誤！)</text><text x="40" y="200" font-family="serif" font-size="15" fill="%23334155">頂點 (2, 1)</text><text x="40" y="250" font-family="serif" font-size="15" fill="%23334155">最大值 1，最小值 -3</text></svg>',
+            step1Score: 2,
+            step2Score: 3,
+            maxScore: 10,
+            comment: '配方展開常數項展開符號錯誤，注意 -2 * (-4) = +8。',
+            status: 'pending'
+          }
+        ];
+      }
+
+      function loadReviewQueue() {
+        const clsFilter = (document.getElementById('reviewClassFilter') && document.getElementById('reviewClassFilter').value) || 'ALL';
+        let stored = JSON.parse(localStorage.getItem('MP_V2_SUBJECTIVE_REVIEWS') || 'null');
+        if (!stored || !Array.isArray(stored) || stored.length === 0) {
+          stored = getSampleReviews();
+          localStorage.setItem('MP_V2_SUBJECTIVE_REVIEWS', JSON.stringify(stored));
+        }
+
+        reviewQueue = stored.filter(r => {
+          if (r.status === 'graded') return false;
+          if (clsFilter !== 'ALL' && r.classID !== clsFilter) return false;
+          return true;
+        });
+
+        const badge = document.getElementById('pendingReviewsBadge');
+        if (badge) badge.textContent = `${reviewQueue.length} 份待批閱`;
+
+        const select = document.getElementById('reviewQueueSelect');
+        const emptyBox = document.getElementById('speedGraderEmpty');
+        const container = document.getElementById('speedGraderContainer');
+
+        if (reviewQueue.length === 0) {
+          if (select) select.innerHTML = '<option value="">(隊列為空)</option>';
+          if (emptyBox) emptyBox.classList.remove('d-none');
+          if (container) container.classList.add('d-none');
+          return;
+        }
+
+        if (emptyBox) emptyBox.classList.add('d-none');
+        if (container) container.classList.remove('d-none');
+
+        if (select) {
+          select.innerHTML = reviewQueue.map((item, idx) => `
+            <option value="${idx}">[${esc(item.classID)}] ${esc(item.studentID)}號 ${esc(item.name)} - ${esc(item.questionTitle.slice(0, 24))}</option>
+          `).join('');
+          select.value = String(currentReviewIndex < reviewQueue.length ? currentReviewIndex : 0);
+        }
+        selectReviewItem();
+      }
+
+      function selectReviewItem() {
+        const select = document.getElementById('reviewQueueSelect');
+        if (!select || reviewQueue.length === 0) return;
+        currentReviewIndex = parseInt(select.value, 10) || 0;
+        if (currentReviewIndex < 0) currentReviewIndex = 0;
+        if (currentReviewIndex >= reviewQueue.length) currentReviewIndex = reviewQueue.length - 1;
+
+        const item = reviewQueue[currentReviewIndex];
+        if (!item) return;
+
+        document.getElementById('reviewStudentTitle').textContent = `📄 ${item.classID} 班 ${item.studentID} 號 ${item.name} · ${item.examTitle}`;
+        document.getElementById('reviewQuestionTitle').textContent = item.questionTitle;
+        document.getElementById('reviewStemSnippet').textContent = `題幹：${item.stemSnippet}`;
+        document.getElementById('rubricStep1').value = item.step1Score !== undefined ? item.step1Score : 4;
+        document.getElementById('rubricStep2').value = item.step2Score !== undefined ? item.step2Score : 5;
+        document.getElementById('reviewCommentInput').value = item.comment || '';
+        calcReviewScore();
+
+        // Render photo to canvas
+        reviewImageRotation = 0;
+        reviewImageInverted = false;
+        loadCanvasImage(item.photoUrl);
+      }
+
+      function loadCanvasImage(url) {
+        const canvas = document.getElementById('reviewCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () {
+          currentLoadedImg = img;
+          renderReviewCanvas();
+        };
+        img.src = url;
+      }
+
+      function renderReviewCanvas() {
+        const canvas = document.getElementById('reviewCanvas');
+        if (!canvas || !currentLoadedImg) return;
+        const ctx = canvas.getContext('2d');
+
+        const rad = (reviewImageRotation * Math.PI) / 180;
+        const isOrthogonal = (reviewImageRotation / 90) % 2 !== 0;
+        const w = isOrthogonal ? currentLoadedImg.height : currentLoadedImg.width;
+        const h = isOrthogonal ? currentLoadedImg.width : currentLoadedImg.height;
+
+        canvas.width = w;
+        canvas.height = h;
+
+        ctx.save();
+        ctx.clearRect(0, 0, w, h);
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(rad);
+        ctx.drawImage(currentLoadedImg, -currentLoadedImg.width / 2, -currentLoadedImg.height / 2);
+        ctx.restore();
+
+        if (reviewImageInverted) {
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = 255 - data[i];         // R
+            data[i + 1] = 255 - data[i + 1]; // G
+            data[i + 2] = 255 - data[i + 2]; // B
+          }
+          ctx.putImageData(imgData, 0, 0);
+        }
+      }
+
+      function rotateReviewImage() {
+        reviewImageRotation = (reviewImageRotation + 90) % 360;
+        renderReviewCanvas();
+      }
+
+      function toggleImageInvert() {
+        reviewImageInverted = !reviewImageInverted;
+        renderReviewCanvas();
+      }
+
+      function setCanvasTool(tool) {
+        canvasTool = tool;
+        const btn = document.getElementById('btnPenRed');
+        if (btn) btn.className = tool === 'red_pen' ? 'btn btn-danger btn-sm' : 'btn btn-outline-danger btn-sm';
+      }
+
+      function clearCanvasAnnotations() {
+        renderReviewCanvas();
+      }
+
+      function calcReviewScore() {
+        const s1 = parseInt(document.getElementById('rubricStep1').value, 10) || 0;
+        const s2 = parseInt(document.getElementById('rubricStep2').value, 10) || 0;
+        const total = s1 + s2;
+        const badge = document.getElementById('reviewCurrentScoreBadge');
+        if (badge) badge.textContent = `得分: ${total} / 10`;
+        return total;
+      }
+
+      function insertQuickComment(text) {
+        const input = document.getElementById('reviewCommentInput');
+        if (!input) return;
+        input.value = (input.value ? (input.value + ' ') : '') + text;
+      }
+
+      function saveCurrentReview() {
+        if (reviewQueue.length === 0 || !reviewQueue[currentReviewIndex]) return;
+        const item = reviewQueue[currentReviewIndex];
+        const finalScore = calcReviewScore();
+        const comment = document.getElementById('reviewCommentInput').value.trim();
+
+        // Mark as graded in all reviews
+        const all = JSON.parse(localStorage.getItem('MP_V2_SUBJECTIVE_REVIEWS') || '[]');
+        const idx = all.findIndex(x => x.id === item.id);
+        if (idx !== -1) {
+          all[idx].status = 'graded';
+          all[idx].gradedScore = finalScore;
+          all[idx].comment = comment;
+          all[idx].gradedTs = Date.now();
+          all[idx].gradedBy = '教師管理員';
+        }
+        localStorage.setItem('MP_V2_SUBJECTIVE_REVIEWS', JSON.stringify(all));
+
+        // Automatically update student's score in overrides and score records
+        const overrides = JSON.parse(localStorage.getItem('MP_V2_TEACHER_SCORE_OVERRIDES') || '{}');
+        const sid = `${item.classID}_${item.studentID}`;
+        overrides[`quiz_1102:${sid}`] = { packId: 'quiz_1102', sid: sid, newScore: 50 + finalScore, updatedAt: Date.now() };
+        localStorage.setItem('MP_V2_TEACHER_SCORE_OVERRIDES', JSON.stringify(overrides));
+
+        // Audit log
+        const audit = JSON.parse(localStorage.getItem('MP_V2_TEACHER_AUDIT_LOG') || '[]');
+        audit.unshift({
+          action: 'subjective_grade',
+          reviewId: item.id,
+          sid: sid,
+          score: finalScore,
+          comment: comment,
+          ts: new Date().toISOString()
+        });
+        localStorage.setItem('MP_V2_TEACHER_AUDIT_LOG', JSON.stringify(audit.slice(0, 50)));
+
+        alert(`✅ 已完成 ${item.classID} 班 ${item.name} 的批閱！得分：${finalScore} 分。`);
+        loadReviewQueue();
+      }
+
+      function prevReviewItem() {
+        if (currentReviewIndex > 0) {
+          currentReviewIndex--;
+          const select = document.getElementById('reviewQueueSelect');
+          if (select) select.value = String(currentReviewIndex);
+          selectReviewItem();
+        }
+      }
+
+      function nextReviewItem() {
+        if (currentReviewIndex < reviewQueue.length - 1) {
+          currentReviewIndex++;
+          const select = document.getElementById('reviewQueueSelect');
+          if (select) select.value = String(currentReviewIndex);
+          selectReviewItem();
+        }
+      }
+
+      // Canvas pointer annotation events
+      function initCanvasDrawing() {
+        const canvas = document.getElementById('reviewCanvas');
+        if (!canvas) return;
+        let drawing = false;
+        let lastX = 0, lastY = 0;
+
+        canvas.addEventListener('mousedown', function (e) {
+          drawing = true;
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          lastX = (e.clientX - rect.left) * scaleX;
+          lastY = (e.clientY - rect.top) * scaleY;
+        });
+
+        window.addEventListener('mouseup', function () {
+          drawing = false;
+        });
+
+        canvas.addEventListener('mousemove', function (e) {
+          if (!drawing) return;
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          const curX = (e.clientX - rect.left) * scaleX;
+          const curY = (e.clientY - rect.top) * scaleY;
+
+          const ctx = canvas.getContext('2d');
+          ctx.beginPath();
+          ctx.moveTo(lastX, lastY);
+          ctx.lineTo(curX, curY);
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          lastX = curX;
+          lastY = curY;
+        });
+      }
       function renderQaList() {
         const list = JSON.parse(localStorage.getItem('MP_V2_HELP_QA') || '[]');
         const box = document.getElementById('teacherQaList');
@@ -848,6 +1243,17 @@
         publishAnnouncement: publishAnnouncement,
         deleteAnnouncement: deleteAnnouncement,
         renderAnnounceList: renderAnnounceList,
+        loadReviewQueue: loadReviewQueue,
+        selectReviewItem: selectReviewItem,
+        rotateReviewImage: rotateReviewImage,
+        toggleImageInvert: toggleImageInvert,
+        setCanvasTool: setCanvasTool,
+        clearCanvasAnnotations: clearCanvasAnnotations,
+        calcReviewScore: calcReviewScore,
+        insertQuickComment: insertQuickComment,
+        saveCurrentReview: saveCurrentReview,
+        prevReviewItem: prevReviewItem,
+        nextReviewItem: nextReviewItem,
         registerExtensionItem: registerExtensionItem,
         exportAnonymizedResearchCsv: exportAnonymizedResearchCsv,
         generateClassRandomKeys: generateClassRandomKeys
