@@ -24,6 +24,8 @@
     root.generateDemoSnapshot = root.FaceAuthModule.generateDemoSnapshot;
     root.computeCosineSimilarity = root.FaceAuthModule.computeCosineSimilarity;
     root.initFaceApi = root.FaceAuthModule.initFaceApi;
+    root.areModelsLoaded = root.FaceAuthModule.areModelsLoaded;
+    root.isModelLoading = root.FaceAuthModule.isModelLoading;
     root.isDemoMode = root.FaceAuthModule.isDemoMode;
     root.setDemoMode = root.FaceAuthModule.setDemoMode;
     root.startCamera = root.FaceAuthModule.startCamera;
@@ -80,6 +82,7 @@
   let isModelsLoaded = false;
   let isModelLoading = false;
   let demoModeActive = false;
+  let explicitDemoMode = false;
   let activeMediaStream = null;
 
   /**
@@ -90,10 +93,18 @@
   }
 
   /**
+   * Check whether @vladmandic/face-api neural models are loaded
+   */
+  function areModelsLoaded() {
+    return isModelsLoaded;
+  }
+
+  /**
    * Explicitly set or toggle demo mode
    * @param {boolean} enabled 
    */
   function setDemoMode(enabled) {
+    explicitDemoMode = !!enabled;
     demoModeActive = !!enabled;
   }
 
@@ -125,12 +136,16 @@
    * @returns {Promise<boolean>}
    */
   async function initFaceApi(modelBaseUri) {
-    if (isModelsLoaded) return true;
+    if (isModelsLoaded) {
+      if (!explicitDemoMode) demoModeActive = false;
+      return true;
+    }
     if (isModelLoading) {
       // Wait for existing load promise
       while (isModelLoading) {
         await new Promise(function (res) { setTimeout(res, 100); });
       }
+      if (isModelsLoaded && !explicitDemoMode) demoModeActive = false;
       return isModelsLoaded;
     }
 
@@ -145,6 +160,7 @@
 
     const uri = modelBaseUri || DEFAULT_MODEL_URI;
     isModelLoading = true;
+    if (!explicitDemoMode) demoModeActive = false;
 
     try {
       if (faceapi.tf && typeof faceapi.tf.setBackend === 'function') {
@@ -158,6 +174,7 @@
         faceapi.nets.faceRecognitionNet.loadFromUri(uri)
       ]);
       isModelsLoaded = true;
+      if (!explicitDemoMode) demoModeActive = false;
       console.log("[FaceAuth] @vladmandic/face-api models successfully loaded from", uri);
       return true;
     } catch (err) {
@@ -1036,6 +1053,8 @@
     setDemoMode: setDemoMode,
     checkCameraAvailability: checkCameraAvailability,
     initFaceApi: initFaceApi,
+    areModelsLoaded: areModelsLoaded,
+    isModelLoading: function () { return isModelLoading; },
     startCamera: startCamera,
     stopCamera: stopCamera,
     isCameraRunning: isCameraRunning,

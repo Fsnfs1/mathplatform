@@ -367,7 +367,173 @@ async function runAllTests() {
   assert.ok(appHtml.includes('buildLeaderboardEntries(scoredRoster, { minScore: leaderboardMinScore, limit: 10 })'), 'app.html must use buildLeaderboardEntries with leaderboardMinScore and limit 10');
   console.log('[PASS] 10. 1113 數學大測二 Store, Left-Most A6 Tab, Max +5 Correction Bonus, 120 Cap & UI Integrity');
 
-  console.log('=== ALL TESTS PASSED (10/10) ===');
+  // 11. Unified Legacy 4cd1102 Face Scan, Vector/Password Precedence, Sync Non-Downgrade & Anti-Poisoning
+  const idxMinApi = appHtml.indexOf('face-api.min.js');
+  const idxBonusJs = appHtml.indexOf('core/bonus.js');
+  const idxPersistJs = appHtml.indexOf('js/persistence.js');
+  assert.ok(idxMinApi !== -1, 'app.html must load face-api.min.js for unified model pipeline');
+  assert.ok(idxBonusJs !== -1 && idxPersistJs > idxBonusJs, 'js/persistence.js must load after core/bonus.js so ADMIN_STUDENT_PASSWORDS is initialized');
+  assert.ok(appHtml.includes('loadPreloadedProfiles(false)'), 'app.html must call loadPreloadedProfiles(false)');
+  assert.ok(appHtml.includes('initFaceApi()'), 'app.html must initialize face-api models on startup');
+  assert.ok(appHtml.includes('syncAllProfilesFromSheet()'), 'app.html must sync Sheet face and password records on startup');
+  assert.ok(appHtml.includes('setDemoMode(false)'), 'app.html must clear transient demo mode when starting physical camera');
+  assert.ok(appHtml.includes('snap.imageBase64 || snap.photoBase64'), 'app.html recordFaceLoginTrace must read snap.imageBase64 first');
+  assert.ok(appHtml.includes("tag: 'LOGIN_TRACE'"), 'app.html uploadDrivePhoto must pass structured object payload with LOGIN_TRACE tag');
+  assert.ok(appHtml.includes('matchResult.centeredSimilarity >= 0.75 || matchResult.euclideanDistance < 0.48'), 'app.html must enforce unified 4cd1102 isAmbiguous guard');
+  assert.ok(appHtml.includes('^(4C|4D|5B|5C)(\\d{2})'), 'app.html must support legacy 4cd1102 single-box key auto-resolution');
+  assert.ok(!appHtml.includes('4D01-4ZXP'), 'app.html must not embed plaintext student keys');
+
+  const faceAuth = require('../js/face_auth.js');
+  assert.strictEqual(typeof faceAuth.areModelsLoaded, 'function', 'FaceAuthModule must export areModelsLoaded()');
+  assert.strictEqual(typeof faceAuth.isModelLoading, 'function', 'FaceAuthModule must export isModelLoading()');
+  assert.strictEqual(faceAuth.areModelsLoaded(), false);
+
+  const origLS = globalThis.localStorage;
+  const origFetch = globalThis.fetch;
+  const origPreloaded = globalThis.PRELOADED_STUDENT_FACES;
+  const origGetRoster = globalThis.getRoster;
+  const origGetStudent = globalThis.getStudent;
+  const origGetStudentName = globalThis.getStudentName;
+
+  const lsMap = new Map();
+  globalThis.localStorage = {
+    getItem: k => (lsMap.has(String(k)) ? lsMap.get(String(k)) : null),
+    setItem: (k, v) => { lsMap.set(String(k), String(v)); },
+    removeItem: k => { lsMap.delete(String(k)); },
+    clear: () => { lsMap.clear(); },
+    key: i => Array.from(lsMap.keys())[i] || null,
+    get length() { return lsMap.size; }
+  };
+
+  try {
+    globalThis.getRoster = rosterMod.getRoster;
+    globalThis.getStudent = rosterMod.getStudent;
+    globalThis.getStudentName = rosterMod.getStudentName;
+    require('../js/preloaded_faces.js');
+    assert.ok(globalThis.PRELOADED_STUDENT_FACES && globalThis.PRELOADED_STUDENT_FACES['4C_6'], 'PRELOADED_STUDENT_FACES loaded');
+    const orig4C19Snap = auth.STUDENT_CUSTOM_PASSWORDS['4C_19'] ? Object.assign({}, auth.STUDENT_CUSTOM_PASSWORDS['4C_19']) : null;
+
+    // Legacy 5BC1102 math_student_vector_* JSON array format
+    const legacyVecArr = Array.from({ length: 128 }, (_, i) => (i === 0 ? 1 : 0.01));
+    globalThis.localStorage.setItem('math_student_vector_5B_99', JSON.stringify(legacyVecArr));
+
+    // Poisoned passwordChanged:false record with default 1234 hash for 4C_1 (who has passwordChanged:true in snapshot)
+    const persistence = require('../js/persistence.js');
+    const default1234Salt = 'MATH_SALT_4C_1';
+    const default1234Hash = persistence.hashPassword('1234', default1234Salt);
+    globalThis.localStorage.setItem('math_student_password_4C_1', JSON.stringify({
+      classID: '4C',
+      studentID: 1,
+      salt: default1234Salt,
+      hash: default1234Hash,
+      passwordChanged: false,
+      updatedAt: 0
+    }));
+
+    // Seed an active changed localStorage custom password for 4C_2 to ensure initDefaultPasswords preserves it
+    const c2Salt = 'MATH_SALT_4C_2';
+    const c2Hash = await cryptoMod.sha256Hex(c2Salt + ':local7788');
+    globalThis.localStorage.setItem('math_student_password_4C_2', JSON.stringify({
+      classID: '4C',
+      studentID: 2,
+      salt: c2Salt,
+      hash: c2Hash,
+      passwordChanged: true
+    }));
+
+    // Verify core/auth.js + persistence.js resist poisoned 4C_1 record
+    assert.strictEqual(await auth.verifyStudentCustomPassword('4C', 1, '1234'), false, 'Poisoned 1234 record must remain rejected');
+    const pRec4C1Before = persistence.getStudentPasswordRecord('4C', 1);
+    assert.strictEqual(pRec4C1Before.passwordChanged, true, 'getStudentPasswordRecord must prefer snapshot passwordChanged:true over poisoned false');
+    assert.strictEqual(pRec4C1Before.hash, auth.STUDENT_CUSTOM_PASSWORDS['4C_1'].hash);
+
+    // initDefaultPasswords() must repair poisoned 4C_1 in localStorage while preserving 4C_2 local secret
+    persistence.initDefaultPasswords();
+    const repaired4C1 = JSON.parse(globalThis.localStorage.getItem('math_student_password_4C_1'));
+    assert.strictEqual(repaired4C1.passwordChanged, true, 'initDefaultPasswords must repair poisoned passwordChanged:false entry');
+    assert.strictEqual(repaired4C1.hash, auth.STUDENT_CUSTOM_PASSWORDS['4C_1'].hash);
+    assert.strictEqual(await auth.verifyStudentCustomPassword('4C', 2, 'local7788'), true, 'Locally changed password without timestamp must be preserved');
+
+    // Legacy 5B_99 vector readable via getStudentProfile and getAllStudentProfiles
+    const legacyProf = persistence.getStudentProfile('5B', 99);
+    assert.ok(legacyProf && legacyProf.vector && legacyProf.vector.length === 128, 'getStudentProfile must parse JSON-stringified math_student_vector_*');
+    const allProfsInit = persistence.getAllStudentProfiles();
+    assert.ok(allProfsInit.some(p => p.classID === '5B' && p.studentID === 99), 'getAllStudentProfiles must include math_student_vector_*');
+
+    // loadPreloadedProfiles(false) idempotency: never mutates updatedAt or creates duplicate history on same timestamp
+    persistence.loadPreloadedProfiles(false);
+    const prof4C6First = persistence.getStudentProfile('4C', 6);
+    const origTs4C6 = prof4C6First.timestamp;
+    const origHistLen4C6 = (prof4C6First.history || []).length;
+    persistence.loadPreloadedProfiles(false);
+    const prof4C6Second = persistence.getStudentProfile('4C', 6);
+    assert.strictEqual(prof4C6Second.timestamp, origTs4C6, 'loadPreloadedProfiles(false) must not bump timestamp on identical ts');
+    assert.strictEqual((prof4C6Second.history || []).length, origHistLen4C6, 'loadPreloadedProfiles(false) must not duplicate history');
+
+    // Identify 1:N match using preloaded 4C_6 descriptor with minor perturbation
+    const vec4C6 = new Float32Array(prof4C6Second.vector);
+    vec4C6[0] += 0.005;
+    const match4C6 = faceAuth.identifyFace1toN(vec4C6, allProfsInit, 0.82);
+    assert.strictEqual(match4C6.isMatch, true, 'Preloaded 4C_6 vector must achieve 1:N direct match');
+    assert.strictEqual(match4C6.bestMatch.classID, '4C');
+    assert.strictEqual(Number(match4C6.bestMatch.studentID), 6);
+
+    // Ambiguous guard check: blend 50/50 between 4D_4 and 4D_21
+    const p4 = persistence.getStudentProfile('4D', 4);
+    const p21 = persistence.getStudentProfile('4D', 21);
+    assert.ok(p4 && p21, '4D_4 and 4D_21 profiles must exist in PRELOADED_STUDENT_FACES');
+    const blendedAmb = new Float32Array(128);
+    for (let i = 0; i < 128; i++) blendedAmb[i] = 0.5 * p4.vector[i] + 0.5 * p21.vector[i];
+    const ambRes = faceAuth.identifyFace1toN(blendedAmb, allProfsInit, 0.82);
+    assert.strictEqual(ambRes.isMatch, false, 'Blended close pair must NOT auto-login without password disambiguation');
+    assert.ok(ambRes.status === 'AMBIGUOUS_MARGIN' || ambRes.status === 'LOW_SIMILARITY');
+
+    // Cloud Sheet sync non-downgrade & update verification via mocked fetch
+    const newer4C19Salt = 'MATH_SALT_4C_19';
+    const newer4C19Hash = persistence.hashPassword('8899', newer4C19Salt);
+    const stale1234Hash = persistence.hashPassword('1234', default1234Salt);
+    const futureTs = origTs4C6 + 1000000;
+    const syncedVec4C6 = Array.from(prof4C6Second.vector).map(v => Number(v).toFixed(4)).join(',');
+
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => [
+        // Attempted downgrade of 4C_1 with CHANGED:0 even at future timestamp -> MUST BE IGNORED
+        { classID: '4C', studentID: 1, dateID: `PWD|HASH:${stale1234Hash}|SALT:${default1234Salt}|CHANGED:0|TS:${futureTs}` },
+        // Legitimate upgrade of 4C_19 -> MUST APPLY to both localStorage and ADMIN_STUDENT_PASSWORDS
+        { classID: '4C', studentID: 19, dateID: `PWD|HASH:${newer4C19Hash}|SALT:${newer4C19Salt}|CHANGED:1|TS:${futureTs}` },
+        // Newer face vector for 4C_6 -> MUST SYNC
+        { classID: '4C', studentID: 6, dateID: `${syncedVec4C6}|TS:${futureTs}|V:2` }
+      ]
+    });
+
+    const syncRes = await persistence.syncAllProfilesFromSheet();
+    assert.strictEqual(syncRes.success, true);
+    assert.strictEqual(persistence.getStudentPasswordRecord('4C', 1).passwordChanged, true, 'Sheet CHANGED:0 row must never downgrade changed password');
+    assert.strictEqual(persistence.verifyStudentPassword('4C', 19, '8899'), true, 'Newer Sheet CHANGED:1 row must update password verification');
+    assert.strictEqual(await auth.verifyStudentCustomPassword('4C', 19, '8899'), true, 'Updated password from Sheet must sync into ADMIN_STUDENT_PASSWORDS');
+    assert.strictEqual(persistence.getStudentProfile('4C', 6).timestamp, futureTs, 'Newer face vector from Sheet must update profile timestamp');
+
+    // Preloaded must not overwrite newer Sheet/enhanced profile
+    persistence.loadPreloadedProfiles(false);
+    assert.strictEqual(persistence.getStudentProfile('4C', 6).timestamp, futureTs, 'loadPreloadedProfiles(false) must preserve newer synced timestamp');
+
+    if (orig4C19Snap) auth.STUDENT_CUSTOM_PASSWORDS['4C_19'] = orig4C19Snap;
+
+    // Legacy 4cd1102 teacher key formats (case-insensitive & dash-optional)
+    assert.strictEqual(await auth.verifyStudentRosterKey('4D', 1, '4D01-4ZXP'), true, 'Legacy dashed teacher key must verify');
+    assert.strictEqual(await auth.verifyStudentRosterKey('4D', 1, '4d014zxp'), true, 'Legacy lowercase undashed teacher key must verify');
+  } finally {
+    globalThis.localStorage = origLS;
+    globalThis.fetch = origFetch;
+    globalThis.PRELOADED_STUDENT_FACES = origPreloaded;
+    globalThis.getRoster = origGetRoster;
+    globalThis.getStudent = origGetStudent;
+    globalThis.getStudentName = origGetStudentName;
+  }
+  console.log('[PASS] 11. Unified 4cd1102 Face Bootstrap, Legacy Vector/Password Compatibility & Sync Protection');
+
+  console.log('=== ALL TESTS PASSED (11/11) ===');
 }
 
 runAllTests().catch(err => {

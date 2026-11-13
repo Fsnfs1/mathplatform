@@ -425,6 +425,32 @@
       console.warn("[Persistence] Failed to read student profile from localStorage:", e);
     }
 
+    // Legacy fallback: 5BC1102.html math_student_vector_<cid>_<sid>
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const legacyVecRaw = localStorage.getItem(`math_student_vector_${cid}_${sid}`);
+        if (legacyVecRaw) {
+          const legacyParsed = JSON.parse(legacyVecRaw);
+          const legacyNorm = normalizeVector(legacyParsed);
+          if (legacyNorm && legacyNorm.length === 128) {
+            const sName = (typeof window !== 'undefined' && window.getStudentName ? window.getStudentName(cid, sid) : (typeof globalThis !== 'undefined' && globalThis.getStudentName ? globalThis.getStudentName(cid, sid) : `學生 ${sid}`));
+            return {
+              classID: cid,
+              studentID: parseInt(sid, 10),
+              name: sName,
+              vector: new Float32Array(legacyNorm),
+              photoJpgBase64: "",
+              registeredAt: new Date(0).toISOString(),
+              updatedAt: 0,
+              timestamp: 0,
+              version: 1,
+              history: []
+            };
+          }
+        }
+      } catch (e) {}
+    }
+
     // Direct memory fallback: PRELOADED_STUDENT_FACES
     const preloaded = (typeof window !== 'undefined' && window.PRELOADED_STUDENT_FACES) ||
                       (typeof globalThis !== 'undefined' && globalThis.PRELOADED_STUDENT_FACES);
@@ -560,6 +586,7 @@
     }
 
     // 2. Overlay: load newer or locally registered profiles from LocalStorage
+    const modernProfileKeys = new Set();
     if (typeof localStorage !== 'undefined') {
       const prefix = PERSISTENCE_CONFIG.profilePrefix;
       try {
@@ -571,13 +598,52 @@
             if (parts.length >= 2) {
               const cls = parts[0];
               const sid = parts[1];
+              const k = `${String(cls).toUpperCase()}_${parseInt(sid, 10)}`;
+              modernProfileKeys.add(k);
               const p = getStudentProfile(cls, sid);
               if (p && !p.isAbnormal && !p.abnormal && p.vector && (p.vector.length === 128 || (Array.isArray(p.vector) && p.vector.length === 128))) {
-                const k = `${String(cls).toUpperCase()}_${parseInt(sid, 10)}`;
                 if (!profileMap[k] || (p.timestamp || p.updatedAt || 0) >= (profileMap[k].timestamp || 0)) {
                   profileMap[k] = p;
                 }
               }
+            }
+          }
+        }
+
+        // 3. Overlay legacy 5BC1102.html math_student_vector_* when no modern math_student_profile_ exists
+        const legacyPrefix = "math_student_vector_";
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.indexOf(legacyPrefix) === 0) {
+            const rest = key.substring(legacyPrefix.length);
+            const parts = rest.split("_");
+            if (parts.length >= 2) {
+              const cid = String(parts[0]).trim().toUpperCase();
+              const sid = parseInt(parts[1], 10);
+              if (!cid || isNaN(sid)) continue;
+              const k = `${cid}_${sid}`;
+              if (modernProfileKeys.has(k)) continue;
+              const rawVec = localStorage.getItem(key);
+              if (!rawVec) continue;
+              try {
+                const parsedVec = JSON.parse(rawVec);
+                const normVec = normalizeVector(parsedVec);
+                if (normVec && normVec.length === 128) {
+                  const sName = (typeof window !== 'undefined' && window.getStudentName ? window.getStudentName(cid, sid) : `學生 ${sid}`);
+                  profileMap[k] = {
+                    classID: cid,
+                    studentID: sid,
+                    name: sName,
+                    vector: new Float32Array(normVec),
+                    photoJpgBase64: "",
+                    registeredAt: new Date(0).toISOString(),
+                    updatedAt: 0,
+                    timestamp: 0,
+                    version: 1,
+                    history: []
+                  };
+                }
+              } catch (_) {}
             }
           }
         }
@@ -652,8 +718,15 @@
   async function syncAllProfilesFromSheet() {
     const gasUrl = PERSISTENCE_CONFIG.gasSheetReaderUrl;
     if (!gasUrl) return { success: false, count: 0, students: [] };
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(function () { controller.abort(); }, 5000) : null;
     try {
-      const response = await fetch(gasUrl, { method: 'GET', mode: 'cors' });
+      const response = await fetch(gasUrl, {
+        method: 'GET',
+        mode: 'cors',
+        signal: controller ? controller.signal : undefined
+      });
+      if (timeoutId) clearTimeout(timeoutId);
       if (!response.ok) return { success: false, count: 0, students: [] };
       const rows = await response.json();
       if (!Array.isArray(rows)) return { success: false, count: 0, students: [] };
@@ -661,8 +734,9 @@
       let syncedCount = 0;
       const syncedStudents = [];
       const faceMap = {};
+      const pwdMap = {};
 
-      // Group face vector records by student to find their latest registration
+      // Group face vector & password records by student to find their latest entries
       rows.forEach(function (r) {
         if (!r) return;
         const did = String(r.dateID || "");
@@ -675,22 +749,14 @@
           const changedMatch = did.match(/CHANGED:([^|]+)/);
           const tsMatch = did.match(/TS:(\d+)/);
           if (hashMatch) {
-            const h = hashMatch[1];
+            const h = String(hashMatch[1]).toLowerCase();
             const s = saltMatch ? saltMatch[1] : derivePasswordSalt(cid, sid);
             const ch = changedMatch ? (changedMatch[1] === "1" || changedMatch[1] === "true") : false;
             const ts = tsMatch ? Number(tsMatch[1]) : 0;
-            const existing = getStudentPasswordRecord(cid, sid);
-            if (!existing || ts >= (existing.updatedAt || 0)) {
-              if (typeof localStorage !== 'undefined') {
-                localStorage.setItem(`math_student_password_${cid}_${sid}`, JSON.stringify({
-                  classID: cid,
-                  studentID: sid,
-                  salt: s,
-                  hash: h,
-                  passwordChanged: ch,
-                  updatedAt: ts
-                }));
-              }
+            const pk = `${cid}_${sid}`;
+            const prevPwd = pwdMap[pk];
+            if (!prevPwd || ts > prevPwd.ts || (ts === prevPwd.ts && ch && !prevPwd.ch)) {
+              pwdMap[pk] = { cid: cid, sid: sid, s: s, h: h, ch: ch, ts: ts };
             }
           }
           return;
@@ -709,13 +775,52 @@
         }
       });
 
+      const adminPasswords = (typeof window !== 'undefined' && window.ADMIN_STUDENT_PASSWORDS) ||
+                             (typeof globalThis !== 'undefined' && globalThis.ADMIN_STUDENT_PASSWORDS) ||
+                             (typeof self !== 'undefined' && self.ADMIN_STUDENT_PASSWORDS);
+
+      for (const pk in pwdMap) {
+        const pItem = pwdMap[pk];
+        const existing = getStudentPasswordRecord(pItem.cid, pItem.sid);
+        const existingChanged = !!(existing && existing.passwordChanged);
+        const existingTs = (existing && existing.updatedAt) || 0;
+        const shouldUpdatePwd = !existing ||
+          (!existingChanged && pItem.ch) ||
+          (pItem.ts > 0 && pItem.ts > existingTs && (pItem.ch || !existingChanged)) ||
+          (pItem.ts === existingTs && pItem.ch && !existingChanged);
+
+        if (shouldUpdatePwd) {
+          const recObj = {
+            classID: pItem.cid,
+            studentID: pItem.sid,
+            salt: pItem.s,
+            hash: pItem.h,
+            passwordChanged: pItem.ch,
+            updatedAt: pItem.ts
+          };
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem(`math_student_password_${pItem.cid}_${pItem.sid}`, JSON.stringify(recObj));
+            } catch (_) {}
+          }
+          if (adminPasswords && typeof adminPasswords === 'object') {
+            adminPasswords[pk] = {
+              salt: recObj.salt,
+              hash: recObj.hash,
+              passwordChanged: recObj.passwordChanged,
+              updatedAt: recObj.updatedAt
+            };
+          }
+        }
+      }
+
       for (const k in faceMap) {
         const item = faceMap[k];
         const norm = normalizeVector(item.dateID);
         if (norm && norm.length === 128) {
           const existing = getStudentProfile(item.classID, item.studentID);
           const existingTime = existing ? extractTimestamp(existing) : 0;
-          if (!existing || item.ts >= existingTime) {
+          if (!existing || item.ts > existingTime) {
             const studentName = (typeof window !== 'undefined' && window.getStudentName) ?
               window.getStudentName(item.classID, item.studentID) : `學生 ${item.studentID}`;
             saveStudentProfile({
@@ -737,6 +842,7 @@
       console.log(`[Persistence] Cloud sync finished: ${syncedCount} profile(s) synced:`, syncedStudents);
       return { success: true, count: syncedCount, students: syncedStudents };
     } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
       console.warn("[Persistence] Failed to sync profiles from sheet:", err);
       return { success: false, count: 0, students: [] };
     }
@@ -1528,6 +1634,17 @@
     return sha256(`${s}:${p}`);
   }
 
+  function shouldSnapshotOverridePwd(lsRec, snapRec) {
+    if (!snapRec || !(snapRec.hash || snapRec.passwordHash)) return false;
+    if (!lsRec || !(lsRec.hash || lsRec.passwordHash)) return true;
+    if (!lsRec.passwordChanged && snapRec.passwordChanged) return true;
+    if (lsRec.passwordChanged && !snapRec.passwordChanged) return false;
+    const lsTs = Number(lsRec.updatedAt) || 0;
+    const snapTs = Number(snapRec.updatedAt) || 0;
+    if (lsTs > 0 && snapTs > lsTs && snapRec.passwordChanged) return true;
+    return false;
+  }
+
   /**
    * Get student password record from LocalStorage or Snapshot or generate default (1234, passwordChanged: false)
    */
@@ -1558,19 +1675,22 @@
 
     const key = `math_student_password_${cid}_${sid}`;
     const salt = (snapRec && snapRec.salt) || derivePasswordSalt(cid, sid);
-    const defaultHash = (snapRec && snapRec.hash) || hashPassword(DEFAULT_STUDENT_PASSWORD, salt);
+    const snapHash = snapRec && (snapRec.hash || snapRec.passwordHash);
+    const defaultHash = snapHash || hashPassword(DEFAULT_STUDENT_PASSWORD, salt);
 
+    let lsRec = null;
     if (typeof localStorage !== 'undefined') {
       try {
         const raw = localStorage.getItem(key);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed && parsed.hash) {
-            return {
+          const parsedHash = parsed && (parsed.hash || parsed.passwordHash);
+          if (parsed && parsedHash) {
+            lsRec = {
               classID: cid,
               studentID: sid,
               salt: parsed.salt || salt,
-              hash: parsed.hash,
+              hash: String(parsedHash).toLowerCase(),
               passwordChanged: !!parsed.passwordChanged,
               updatedAt: parsed.updatedAt || 0
             };
@@ -1581,16 +1701,25 @@
       }
     }
 
-    // Fallback cleanly to Snapshot if LocalStorage is empty or cleared (Offline Resilience)
-    if (snapRec) {
-      return {
-        classID: cid,
-        studentID: sid,
-        salt: snapRec.salt || salt,
-        hash: snapRec.hash,
-        passwordChanged: !!snapRec.passwordChanged,
-        updatedAt: snapRec.updatedAt || 0
-      };
+    const normalizedSnap = snapHash
+      ? {
+          classID: cid,
+          studentID: sid,
+          salt: snapRec.salt || salt,
+          hash: String(snapHash).toLowerCase(),
+          passwordChanged: !!snapRec.passwordChanged,
+          updatedAt: snapRec.updatedAt || 0
+        }
+      : null;
+
+    if (shouldSnapshotOverridePwd(lsRec, normalizedSnap)) {
+      return normalizedSnap;
+    }
+    if (lsRec) {
+      return lsRec;
+    }
+    if (normalizedSnap) {
+      return normalizedSnap;
     }
 
     // Default password record
@@ -1652,6 +1781,18 @@
       passwordChanged: !!passwordChanged,
       updatedAt: now
     };
+
+    const adminPasswords = (typeof window !== 'undefined' && window.ADMIN_STUDENT_PASSWORDS) ||
+                           (typeof globalThis !== 'undefined' && globalThis.ADMIN_STUDENT_PASSWORDS) ||
+                           (typeof self !== 'undefined' && self.ADMIN_STUDENT_PASSWORDS);
+    if (adminPasswords && typeof adminPasswords === 'object') {
+      adminPasswords[`${cid}_${sid}`] = {
+        salt: salt,
+        hash: hash,
+        passwordChanged: !!passwordChanged,
+        updatedAt: now
+      };
+    }
 
     if (typeof localStorage !== 'undefined') {
       try {
@@ -1813,7 +1954,7 @@
       const existingTime = existing ? extractTimestamp(existing) : 0;
       const hasValidVec = existing && existing.vector && (existing.vector.length === 128 || (Array.isArray(existing.vector) && existing.vector.length === 128));
 
-      if (!existing || !hasValidVec || forceAll || (item.ts && item.ts >= existingTime)) {
+      if (!existing || !hasValidVec || forceAll || (item.ts && item.ts > existingTime)) {
         const studentName = item.name || (typeof window !== 'undefined' && window.getStudentName ? window.getStudentName(cid, sid) : `學生 ${sid}`);
         saveStudentProfile({
           classID: cid,
@@ -1851,20 +1992,37 @@
       const cid = String(s.classID).trim().toUpperCase();
       const sid = parseInt(s.studentID, 10);
       const key = `math_student_password_${cid}_${sid}`;
-      let hasLocal = false;
+      let parsed = null;
       if (typeof localStorage !== 'undefined') {
         try {
           const raw = localStorage.getItem(key);
           if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && parsed.hash) hasLocal = true;
+            const p = JSON.parse(raw);
+            const ph = p && (p.hash || p.passwordHash);
+            if (p && ph) {
+              parsed = {
+                salt: p.salt || derivePasswordSalt(cid, sid),
+                hash: String(ph).toLowerCase(),
+                passwordChanged: !!p.passwordChanged,
+                updatedAt: p.updatedAt || 0
+              };
+            }
           }
         } catch (e) {}
       }
-      if (!hasLocal) {
-        const snap = adminPasswords ? adminPasswords[`${cid}_${sid}`] : null;
-        const salt = (snap && snap.salt) || derivePasswordSalt(cid, sid);
-        const hash = (snap && snap.hash) || hashPassword(DEFAULT_STUDENT_PASSWORD, salt);
+      const snap = adminPasswords ? adminPasswords[`${cid}_${sid}`] : null;
+      const snapHash = snap && (snap.hash || snap.passwordHash);
+      const normalizedSnap = snapHash
+        ? {
+            salt: snap.salt || derivePasswordSalt(cid, sid),
+            hash: String(snapHash).toLowerCase(),
+            passwordChanged: !!snap.passwordChanged,
+            updatedAt: snap.updatedAt || 0
+          }
+        : null;
+      if (!parsed || shouldSnapshotOverridePwd(parsed, normalizedSnap)) {
+        const salt = (normalizedSnap && normalizedSnap.salt) || derivePasswordSalt(cid, sid);
+        const hash = (normalizedSnap && normalizedSnap.hash) || hashPassword(DEFAULT_STUDENT_PASSWORD, salt);
         if (typeof localStorage !== 'undefined') {
           try {
             localStorage.setItem(key, JSON.stringify({
@@ -1872,8 +2030,8 @@
               studentID: sid,
               salt: salt,
               hash: hash,
-              passwordChanged: (snap && !!snap.passwordChanged) || false,
-              updatedAt: (snap && snap.updatedAt) || 0
+              passwordChanged: (normalizedSnap && !!normalizedSnap.passwordChanged) || false,
+              updatedAt: (normalizedSnap && normalizedSnap.updatedAt) || 0
             }));
             count++;
           } catch (e) {}

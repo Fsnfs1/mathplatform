@@ -87,6 +87,17 @@
       throw new Error("MathCoreCrypto.sha256Hex is required for authentication");
     }
 
+    function shouldSnapshotOverride(lsRec, snapRec) {
+      if (!snapRec || !(snapRec.hash || snapRec.passwordHash)) return false;
+      if (!lsRec || !(lsRec.hash || lsRec.passwordHash)) return true;
+      if (!lsRec.passwordChanged && snapRec.passwordChanged) return true;
+      if (lsRec.passwordChanged && !snapRec.passwordChanged) return false;
+      const lsTs = Number(lsRec.updatedAt) || 0;
+      const snapTs = Number(snapRec.updatedAt) || 0;
+      if (lsTs > 0 && snapTs > lsTs && snapRec.passwordChanged) return true;
+      return false;
+    }
+
     function getStudentCustomPasswordRecord(classID, studentID) {
       const cid = String(classID || "").trim().toUpperCase();
       const idNum = parseInt(studentID, 10);
@@ -95,6 +106,7 @@
       const defaultSalt = `MATH_SALT_${cid}_${idNum}`;
 
       // Check localStorage / MathCoreStorage override first
+      let lsRec = null;
       const lsKey = `math_student_password_${cid}_${idNum}`;
       if (typeof localStorage !== "undefined") {
         try {
@@ -103,23 +115,25 @@
             const parsed = JSON.parse(raw);
             const h = parsed && (parsed.hash || parsed.passwordHash);
             if (h) {
-              return {
+              lsRec = {
                 salt: parsed.salt || defaultSalt,
                 hash: String(h).toLowerCase(),
                 passwordChanged: parsed.passwordChanged !== undefined ? !!parsed.passwordChanged : true,
+                updatedAt: parsed.updatedAt || 0,
               };
             }
           }
         } catch (_) {}
       }
-      if (STORAGE && typeof STORAGE.getItem === "function") {
+      if (!lsRec && STORAGE && typeof STORAGE.getItem === "function") {
         const stored = STORAGE.getItem(lsKey, null);
         const h = stored && typeof stored === "object" && (stored.hash || stored.passwordHash);
         if (h) {
-          return {
+          lsRec = {
             salt: stored.salt || defaultSalt,
             hash: String(h).toLowerCase(),
             passwordChanged: stored.passwordChanged !== undefined ? !!stored.passwordChanged : true,
+            updatedAt: stored.updatedAt || 0,
           };
         }
       }
@@ -127,15 +141,22 @@
       const globalMap =
         (typeof globalThis !== "undefined" && globalThis.ADMIN_STUDENT_PASSWORDS) ||
         STUDENT_CUSTOM_PASSWORDS;
-      const rec = (globalMap && globalMap[sid]) || STUDENT_CUSTOM_PASSWORDS[sid];
-      const recHash = rec && (rec.hash || rec.passwordHash);
-      if (recHash) {
-        return {
-          salt: rec.salt || defaultSalt,
-          hash: String(recHash).toLowerCase(),
-          passwordChanged: !!rec.passwordChanged,
-        };
+      const rawSnap = (globalMap && globalMap[sid]) || STUDENT_CUSTOM_PASSWORDS[sid];
+      const snapHash = rawSnap && (rawSnap.hash || rawSnap.passwordHash);
+      const snapRec = snapHash
+        ? {
+            salt: rawSnap.salt || defaultSalt,
+            hash: String(snapHash).toLowerCase(),
+            passwordChanged: !!rawSnap.passwordChanged,
+            updatedAt: rawSnap.updatedAt || 0,
+          }
+        : null;
+
+      if (shouldSnapshotOverride(lsRec, snapRec)) {
+        return snapRec;
       }
+      if (lsRec) return lsRec;
+      if (snapRec) return snapRec;
       return null;
     }
 
