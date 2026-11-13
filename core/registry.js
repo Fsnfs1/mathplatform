@@ -130,6 +130,17 @@
 
   const DEFAULT_SCORE_PACKS = [
     {
+      id: 'exam_1113_t2',
+      title: '1113 數學大測二',
+      classes: ['4D'],
+      adapter: 'exam_1113_store',
+      script: 'js/exam_1113_scores.js',
+      packType: 'major_exam',
+      bonusMode: 'correction',
+      maxCorrectionBonus: 5,
+      capScore: 120,
+    },
+    {
       id: 'quiz_1023',
       title: '1023 隨堂小測',
       classes: ['4C', '4D', '5B'],
@@ -154,6 +165,15 @@
   ];
 
   const DEFAULT_BONUS_RULES = [
+    {
+      id: 'bonus_1113_exam2_4d',
+      targetScorePackId: 'exam_1113_t2',
+      sourceExamId: 'exam_1113_t2_correction',
+      classes: ['4D'],
+      bonusMode: 'correction',
+      maxCorrectionBonus: 5,
+      capScore: 120,
+    },
     {
       id: 'bonus_1106_4cd',
       targetScorePackId: 'quiz_1106',

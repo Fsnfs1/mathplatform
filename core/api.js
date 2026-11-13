@@ -8,9 +8,10 @@
  *   Posts to `CONFIG.endpoints.gasDriveUploaderUrl`.
  * - `fetchSheetData(params, options)`: Queries `CONFIG.endpoints.gasSheetReaderUrl` with local snapshot fallback.
  * - ScorePack Adapters (`loadScorePack(packId, student, passcode, options)`):
- *   1. `quiz1023_store` -> `js/quiz1023_encrypted_store.js` (`getStudentQuiz1023Record`)
- *   2. `enc_folder` (`quiz_1030`) -> `quiz_results/index.json` + `decryptEncPaper` (`F4CD_1030_SECRET_`)
- *   3. `sheet_live` (`quiz_1106`) -> live Sheet / local overrides / snapshot
+ *   1. `exam_1113_store` (`exam_1113_t2`) -> `js/exam_1113_scores.js` (`getStudentExam1113Record`)
+ *   2. `quiz1023_store` -> `js/quiz1023_encrypted_store.js` (`getStudentQuiz1023Record`)
+ *   3. `enc_folder` (`quiz_1030`) -> `quiz_results/index.json` + `decryptEncPaper` (`F4CD_1030_SECRET_`)
+ *   4. `sheet_live` (`quiz_1106`) -> live Sheet / local overrides / snapshot
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -414,6 +415,24 @@
       return null;
     }
 
+    function ensureExam1113StoreLoaded() {
+      const scope = typeof globalThis !== 'undefined' ? globalThis : {};
+      if (typeof scope.getStudentExam1113Record === 'function') {
+        return scope.getStudentExam1113Record;
+      }
+      if (typeof require === 'function') {
+        try {
+          const storeMod = require('../js/exam_1113_scores.js');
+          if (storeMod && typeof storeMod.getStudentExam1113Record === 'function') {
+            return storeMod.getStudentExam1113Record;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return null;
+    }
+
     async function loadQuiz1030Index(indexFilePath, options) {
       if (options && Array.isArray(options.indexData)) {
         return options.indexData;
@@ -599,6 +618,7 @@
     /**
      * Unified ScorePack Loader (`loadScorePack(packId, student, passcode, options)`).
      * Supports:
+     *  - `exam_1113_store` (`exam_1113_t2`)
      *  - `quiz1023_store` (`quiz_1023`)
      *  - `enc_folder` (`quiz_1030`)
      *  - `sheet_live` (`quiz_1106`)
@@ -624,11 +644,13 @@
           id: packId,
           title: packId,
           adapter:
-            packId === 'quiz_1023'
-              ? 'quiz1023_store'
-              : packId === 'quiz_1030'
-                ? 'enc_folder'
-                : 'sheet_live',
+            packId === 'exam_1113_t2'
+              ? 'exam_1113_store'
+              : packId === 'quiz_1023'
+                ? 'quiz1023_store'
+                : packId === 'quiz_1030'
+                  ? 'enc_folder'
+                  : 'sheet_live',
           folder: 'quiz_results',
           indexFile: 'quiz_results/index.json',
         };
@@ -644,6 +666,11 @@
           typeof STORAGE.getItem === 'function' &&
           STORAGE.getItem('MP_V2_TEACHER_OVERRIDES', {})) ||
         {};
+      const correctionBonusMap =
+        (STORAGE &&
+          typeof STORAGE.getItem === 'function' &&
+          STORAGE.getItem('MP_V2_CORRECTION_BONUSES', {})) ||
+        {};
       const overrideKey = `${packDef.id}:${sid}`;
       const legacyKey = `${packDef.id}_${sid}`;
       let teacherOverride = overridesMap[overrideKey] || null;
@@ -652,6 +679,83 @@
         if (!isNaN(numVal)) {
           teacherOverride = { newScore: numVal };
         }
+      }
+
+      if (packDef.adapter === 'exam_1113_store') {
+        const getRec = ensureExam1113StoreLoaded();
+        if (typeof getRec !== 'function' && !teacherOverride) {
+          return {
+            ok: false,
+            packId: packDef.id,
+            title: packDef.title,
+            error: 'exam_1113_scores not loaded',
+          };
+        }
+        const rec =
+          typeof getRec === 'function'
+            ? getRec({
+                classID: classID,
+                studentID: studentIDNum,
+                name: student.name || '',
+              })
+            : null;
+        const maxCorrectionBonus =
+          packDef.maxCorrectionBonus !== undefined ? Number(packDef.maxCorrectionBonus) : 5;
+        const capScore = packDef.capScore !== undefined ? Number(packDef.capScore) : 120;
+        const baseScore =
+          teacherOverride && typeof teacherOverride.newScore === 'number'
+            ? teacherOverride.newScore
+            : rec && rec.score !== undefined && rec.score !== null
+              ? Number(rec.score)
+              : null;
+        const rawCorr =
+          correctionBonusMap[overrideKey] !== undefined
+            ? Number(correctionBonusMap[overrideKey])
+            : correctionBonusMap[legacyKey] !== undefined
+              ? Number(correctionBonusMap[legacyKey])
+              : rec && rec.correctionBonus !== undefined
+                ? Number(rec.correctionBonus)
+                : 0;
+        const correctionBonus = Math.max(
+          0,
+          Math.min(isNaN(rawCorr) ? 0 : rawCorr, maxCorrectionBonus)
+        );
+        const found = baseScore !== null;
+
+        return {
+          ok: true,
+          found: found,
+          packId: packDef.id,
+          title: packDef.title,
+          adapter: 'exam_1113_store',
+          packType: packDef.packType || 'major_exam',
+          bonusMode: packDef.bonusMode || 'correction',
+          maxCorrectionBonus: maxCorrectionBonus,
+          capScore: capScore,
+          classID: (rec && rec.classID) || classID,
+          studentID: (rec && rec.studentID) || studentIDNum,
+          name: (rec && rec.name) || student.name || '',
+          score: baseScore,
+          origScore: rec && rec.score !== undefined ? Number(rec.score) : null,
+          newTotal: baseScore,
+          origTotal: rec && rec.score !== undefined ? Number(rec.score) : null,
+          correctionBonus: correctionBonus,
+          teacherAdjusted: Boolean(teacherOverride),
+          record: found
+            ? Object.assign({}, rec || {}, {
+                classID: (rec && rec.classID) || classID,
+                studentID: (rec && rec.studentID) || studentIDNum,
+                name: (rec && rec.name) || student.name || '',
+                score: baseScore,
+                newTotal: baseScore,
+                origTotal: rec && rec.score !== undefined ? Number(rec.score) : baseScore,
+                correctionBonus: correctionBonus,
+                maxCorrectionBonus: maxCorrectionBonus,
+                capScore: capScore,
+              })
+            : null,
+          raw: rec,
+        };
       }
 
       if (packDef.adapter === 'quiz1023_store') {

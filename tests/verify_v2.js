@@ -269,7 +269,79 @@ async function runAllTests() {
   assert.strictEqual(faceDirectSess.faceLoginVerified, true, 'Face login persists faceLoginVerified: true for automatic trace exemption');
   console.log('[PASS] 9. A1 Gate Upgrade (1:N Face Scan + Ambiguous Candidate Password Disambiguation + Dual Credentials + Auto Face Trace)');
 
-  console.log('=== ALL TESTS PASSED (9/9) ===');
+  // 10. 1113 數學大測二 (exam_1113_t2) Store, Registry Ordering, Correction Bonus (max +5) & 120 Cap
+  const exam1113 = require('../js/exam_1113_scores.js');
+  const rosterMod = require('../js/roster.js');
+  const packs4D = registry.getScorePacksForClass('4D');
+  assert.ok(packs4D.length >= 4 && packs4D[0].id === 'exam_1113_t2', '4D first (left-most) A6 tab must be exam_1113_t2');
+  assert.strictEqual(packs4D[0].title, '1113 數學大測二');
+  assert.strictEqual(packs4D[0].capScore, 120);
+  assert.strictEqual(packs4D[0].maxCorrectionBonus, 5);
+  assert.strictEqual(registry.getScorePacksForClass('4C')[0].id, 'quiz_1023', 'Non-4D classes retain original first tab');
+
+  const expected1113Scores = [
+    ['洪佳佳', 89], ['翁淮洋', 74], ['余浩賢', 70], ['施舒晨', 70], ['盧肇琪', 69],
+    ['譚佩泳', 68], ['鄭東沅', 68], ['甘俊誠', 67], ['李穎欣', 64], ['張博聰', 63],
+    ['劉付穎', 63], ['李臻斌', 62], ['李青霞', 62], ['李樂瞳', 61], ['徐芷瑤', 60],
+    ['黃嫣然', 58], ['黃悅軒', 56], ['王煜鑫', 50], ['劉泳欣', 49], ['王偉德', 48],
+    ['李語鵑', 47], ['黃梓建', 46], ['鄭佩芝', 45], ['賴君華', 41], ['鄭國樺', 31],
+    ['曾浚恩', 19], ['周梓霖', 14], ['鄭梓浩', 9]
+  ];
+  assert.strictEqual(exam1113.getAllExam1113Records('4D').length, 28, 'Exactly 28 4D student scores injected');
+  const roster4D = rosterMod.getStudentsByClass('4D');
+  for (const [stuName, expectedScore] of expected1113Scores) {
+    const stu = roster4D.find(s => s.name === stuName);
+    assert.ok(stu, `Student ${stuName} must exist in 4D roster`);
+    const loaded = await api.loadScorePack('exam_1113_t2', { classID: '4D', studentID: stu.id, name: stu.name });
+    assert.strictEqual(loaded.ok, true);
+    assert.strictEqual(loaded.found, true, `${stuName} must be found in exam_1113_t2`);
+    assert.strictEqual(loaded.score, expectedScore, `${stuName} score must be ${expectedScore}`);
+    assert.strictEqual(loaded.capScore, 120);
+    assert.strictEqual(loaded.maxCorrectionBonus, 5);
+  }
+  // Missing 4D students (#12, #16, #22) report found: false cleanly
+  const missing12 = await api.loadScorePack('exam_1113_t2', { classID: '4D', studentID: 12, name: '林川雲' });
+  assert.strictEqual(missing12.ok, true);
+  assert.strictEqual(missing12.found, false);
+  assert.strictEqual(missing12.score, null);
+
+  // Correction bonus calculation (max +5, 120 cap, independent of 60 quiz cap)
+  const calc89Plus5 = bonus.calculateMajorExamFinalScore({ rawScore: 89, correctionBonus: 5 });
+  assert.strictEqual(calc89Plus5.finalScore, 94, '89 + 5 = 94 (must NOT be capped at 60)');
+  const calcClamp5 = bonus.calculateQuizFinalScore({
+    rawScore: 74,
+    correctionBonus: 9,
+    rule: { bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120 }
+  });
+  assert.strictEqual(calcClamp5.correctionBonus, 5, 'Correction bonus must clamp at max 5');
+  assert.strictEqual(calcClamp5.finalScore, 79);
+  const calcCap120 = bonus.calculateMajorExamFinalScore({ rawScore: 118, correctionBonus: 5 });
+  assert.strictEqual(calcCap120.finalScore, 120, '118 + 5 clamps at 120 cap');
+  assert.strictEqual(calcCap120.appliedBonus, 2);
+  const calcNeg = bonus.calculateMajorExamFinalScore({ rawScore: 14, correctionBonus: -3 });
+  assert.strictEqual(calcNeg.correctionBonus, 0);
+  assert.strictEqual(calcNeg.finalScore, 14);
+
+  // Correction bonus override via storage
+  storage.setItem('MP_V2_CORRECTION_BONUSES', { 'exam_1113_t2:4D_11': 4 });
+  const loadedZzl = await api.loadScorePack('exam_1113_t2', { classID: '4D', studentID: 11, name: '周梓霖' });
+  assert.strictEqual(loadedZzl.score, 14);
+  assert.strictEqual(loadedZzl.correctionBonus, 4);
+  storage.setItem('MP_V2_CORRECTION_BONUSES', {});
+
+  // UI & privacy assertions for app.html and teacher.html
+  const teacherHtml = fs.readFileSync(__dirname + '/../teacher.html', 'utf8');
+  assert.ok(appHtml.includes('js/exam_1113_scores.js'), 'app.html must load js/exam_1113_scores.js');
+  assert.ok(teacherHtml.includes('js/exam_1113_scores.js'), 'teacher.html must load js/exam_1113_scores.js');
+  assert.ok(appHtml.includes('大測訂正加分（最多加${maxCorrectionBonus}分）'), 'app.html A6 must show 大測訂正加分（最多加5分）');
+  assert.ok(appHtml.includes('刷題最高分 (>80加分)'), 'app.html A6 must retain 刷題最高分 (>80加分) for regular quizzes');
+  assert.ok(!appHtml.includes('洪佳佳') && !appHtml.includes('周梓霖'), 'app.html must not embed student real names in HTML');
+  assert.ok(appHtml.includes('formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, displayMode, idx)'), 'app.html must pass (student, displayMode, idx) in correct order');
+  assert.strictEqual(ui.formatLeaderboardName({ classID: '4D', studentID: 11, name: '周梓霖' }, 'nickname', 0), '周*霖');
+  assert.strictEqual(ui.formatLeaderboardName({ classID: '4D', studentID: 11, name: '周梓霖' }, 'seat_only', 0), '4D #11');
+  console.log('[PASS] 10. 1113 數學大測二 Store, Left-Most A6 Tab, Max +5 Correction Bonus, 120 Cap & UI Integrity');
+
+  console.log('=== ALL TESTS PASSED (10/10) ===');
 }
 
 runAllTests().catch(err => {

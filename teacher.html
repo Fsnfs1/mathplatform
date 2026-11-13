@@ -147,7 +147,7 @@
             <input type="number" id="cfgBonusCap" class="form-control" value="60" min="40" max="100" />
             <button class="btn btn-primary" onclick="TeacherApp.saveGlobalSettings()">儲存設定</button>
           </div>
-          <div class="form-text">刷題超 80 分自動加分與積分兌換加分共用此封頂上限</div>
+          <div class="form-text">刷題超 80 分自動加分與積分兌換加分共用此封頂上限（數學大測獨立採用 120 分封頂與訂正加分）</div>
         </div>
       </div>
     </div>
@@ -157,8 +157,8 @@
       <h5 class="fw-bold mb-2">📝 學生成績微調與總覽（D3：免填原因、不向學生顯示微調原因）</h5>
       <div class="row g-2 align-items-end mb-3">
         <div class="col-md-3">
-          <label class="form-label small">選擇小測項目</label>
-          <select id="tunePackSelect" class="form-select form-select-sm"></select>
+          <label class="form-label small">選擇測驗 / 小測項目</label>
+          <select id="tunePackSelect" class="form-select form-select-sm" onchange="TeacherApp.onTuneSelectionChange()"></select>
         </div>
         <div class="col-md-2">
           <label class="form-label small">班別</label>
@@ -166,14 +166,27 @@
         </div>
         <div class="col-md-3">
           <label class="form-label small">學生</label>
-          <select id="tuneStudentSelect" class="form-select form-select-sm"></select>
+          <select id="tuneStudentSelect" class="form-select form-select-sm" onchange="TeacherApp.onTuneSelectionChange()"></select>
         </div>
         <div class="col-md-2">
           <label class="form-label small">設定新原始分</label>
-          <input type="number" id="tuneNewScore" class="form-control form-control-sm" value="58" />
+          <input type="number" id="tuneNewScore" class="form-control form-control-sm" value="58" min="0" max="120" />
         </div>
         <div class="col-md-2">
           <button class="btn btn-sm btn-success w-100 fw-bold" onclick="TeacherApp.applyScoreTune()">一鍵微調分數</button>
+        </div>
+      </div>
+      <div id="tuneCorrectionRow" class="row g-2 align-items-end mb-3 d-none">
+        <div class="col-md-4">
+          <span class="badge bg-info text-dark">數學大測專屬規則</span>
+          <span class="small text-muted ms-1">封頂上限 120 分 · 訂正加分獨立於小測積分</span>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">大測訂正加分（0 ~ <span id="tuneMaxCorrLabel">5</span> 分）</label>
+          <input type="number" id="tuneCorrectionBonus" class="form-control form-control-sm" value="0" min="0" max="5" step="1" />
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-sm btn-primary w-100 fw-bold" onclick="TeacherApp.applyCorrectionBonus()">套用大測訂正加分</button>
         </div>
       </div>
       <div id="tuneLogBox" class="small text-secondary"></div>
@@ -243,6 +256,7 @@
 
   <!-- Load Read-Only Roster & Modular Core -->
   <script src="js/roster.js"></script>
+  <script src="js/exam_1113_scores.js"></script>
   <script src="core/config.js"></script>
   <script src="core/crypto.js"></script>
   <script src="core/registry.js"></script>
@@ -415,6 +429,12 @@
         window.location.href = 'app.html';
       }
 
+      function getScorePackDef(packId) {
+        const reg = window.MathPlatformRegistry;
+        const packs = (reg && Array.isArray(reg.scorePacks)) ? reg.scorePacks : [];
+        return packs.find(p => p.id === packId) || null;
+      }
+
       function init() {
         const sess = getActiveBackendSession();
         if (!sess || !sess.token) return;
@@ -423,6 +443,7 @@
         document.getElementById('cfgBonusCap').value = localStorage.getItem('MP_V2_BONUS_CAP') || '60';
 
         const packs = (window.MathPlatformRegistry && MathPlatformRegistry.scorePacks) || [
+          { id: 'exam_1113_t2', title: '1113 數學大測二', classes: ['4D'], bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120 },
           { id: 'quiz_1023', title: '1023 隨堂小測' },
           { id: 'quiz_1030', title: '1030 加密考卷' },
           { id: 'quiz_1106', title: '1106 隨堂小測' }
@@ -431,6 +452,10 @@
 
         const classes = (window.MathPlatformRegistry && MathPlatformRegistry.classes) || ['4C', '4D', '5B', '5C'];
         document.getElementById('tuneClassSelect').innerHTML = classes.map(c => `<option value="${esc(c)}">${esc(c)} 班</option>`).join('');
+        const firstPack = packs[0];
+        if (firstPack && Array.isArray(firstPack.classes) && firstPack.classes.length > 0 && classes.indexOf(firstPack.classes[0]) >= 0) {
+          document.getElementById('tuneClassSelect').value = firstPack.classes[0];
+        }
         document.getElementById('repCfgClass').innerHTML = classes.map(c => `<option value="${esc(c)}">${esc(c)} 班</option>`).join('');
         populateStudentList();
         populateRepCandidateList();
@@ -445,6 +470,60 @@
         const list = ((window.getStudentsByClass && window.getStudentsByClass(cls)) || [])
           .filter(s => !s.isTeacherTest && String(s.id) !== '98');
         document.getElementById('tuneStudentSelect').innerHTML = list.map(s => `<option value="${esc(s.classID)}_${esc(s.id)}">${esc(s.id)} 號 - ${esc(s.name)}</option>`).join('');
+        onTuneSelectionChange(false);
+      }
+
+      function onTuneSelectionChange(allowClassSwitch) {
+        const packSel = document.getElementById('tunePackSelect');
+        const clsSel = document.getElementById('tuneClassSelect');
+        const stuSel = document.getElementById('tuneStudentSelect');
+        if (!packSel || !stuSel) return;
+
+        const packId = packSel.value;
+        const packDef = getScorePackDef(packId);
+        if (allowClassSwitch !== false && packDef && Array.isArray(packDef.classes) && packDef.classes.length > 0 && clsSel) {
+          if (packDef.classes.indexOf(clsSel.value) === -1) {
+            clsSel.value = packDef.classes[0];
+            populateStudentList();
+            return;
+          }
+        }
+
+        const sid = stuSel.value;
+        const isMajorExam = Boolean(packDef && (packDef.bonusMode === 'correction' || packDef.packType === 'major_exam')) || packId === 'exam_1113_t2';
+        const maxCorr = (packDef && packDef.maxCorrectionBonus !== undefined) ? Number(packDef.maxCorrectionBonus) : 5;
+        const corrRow = document.getElementById('tuneCorrectionRow');
+        const maxLabel = document.getElementById('tuneMaxCorrLabel');
+        const corrInput = document.getElementById('tuneCorrectionBonus');
+        const scoreInput = document.getElementById('tuneNewScore');
+
+        if (corrRow) corrRow.classList.toggle('d-none', !isMajorExam);
+        if (maxLabel) maxLabel.textContent = String(maxCorr);
+        if (corrInput) corrInput.max = String(maxCorr);
+
+        if (sid) {
+          const overrides = JSON.parse(localStorage.getItem('MP_V2_TEACHER_OVERRIDES') || '{}');
+          const overrides2 = JSON.parse(localStorage.getItem('MP_V2_TEACHER_SCORE_OVERRIDES') || '{}');
+          let currentRaw = null;
+          if (packId === 'exam_1113_t2' && typeof window.getStudentExam1113Record === 'function') {
+            const parts = sid.split('_');
+            const rec = window.getStudentExam1113Record({ classID: parts[0], studentID: parts[1] });
+            if (rec && rec.score !== undefined && rec.score !== null) currentRaw = Number(rec.score);
+          }
+          if (overrides[packId + '_' + sid] !== undefined) currentRaw = Number(overrides[packId + '_' + sid]);
+          if (overrides2[packId + ':' + sid] && overrides2[packId + ':' + sid].newScore !== undefined) currentRaw = Number(overrides2[packId + ':' + sid].newScore);
+          if (scoreInput && currentRaw !== null && !isNaN(currentRaw)) {
+            scoreInput.value = String(currentRaw);
+          }
+
+          if (isMajorExam && corrInput) {
+            const corrBonuses = JSON.parse(localStorage.getItem('MP_V2_CORRECTION_BONUSES') || '{}');
+            const currentCorr = corrBonuses[packId + ':' + sid] !== undefined
+              ? Number(corrBonuses[packId + ':' + sid])
+              : (corrBonuses[packId + '_' + sid] !== undefined ? Number(corrBonuses[packId + '_' + sid]) : 0);
+            corrInput.value = String(Math.max(0, Math.min(isNaN(currentCorr) ? 0 : currentCorr, maxCorr)));
+          }
+        }
       }
 
       function populateRepCandidateList() {
@@ -540,12 +619,36 @@
         renderTuneLog();
       }
 
+      function applyCorrectionBonus() {
+        if (!ensureTeacherAuth('tune_score')) return;
+        const packId = document.getElementById('tunePackSelect').value;
+        const sid = document.getElementById('tuneStudentSelect').value;
+        const packDef = getScorePackDef(packId);
+        const maxCorr = (packDef && packDef.maxCorrectionBonus !== undefined) ? Number(packDef.maxCorrectionBonus) : 5;
+        const rawVal = Number(document.getElementById('tuneCorrectionBonus').value || 0);
+        const clamped = Math.max(0, Math.min(isNaN(rawVal) ? 0 : rawVal, maxCorr));
+        document.getElementById('tuneCorrectionBonus').value = String(clamped);
+
+        const corrBonuses = JSON.parse(localStorage.getItem('MP_V2_CORRECTION_BONUSES') || '{}');
+        corrBonuses[packId + ':' + sid] = clamped;
+        localStorage.setItem('MP_V2_CORRECTION_BONUSES', JSON.stringify(corrBonuses));
+
+        const audit = JSON.parse(localStorage.getItem('MP_V2_TEACHER_AUDIT_LOG') || '[]');
+        audit.unshift({ packId: packId, sid: sid, correctionBonus: clamped, ts: new Date().toISOString() });
+        localStorage.setItem('MP_V2_TEACHER_AUDIT_LOG', JSON.stringify(audit.slice(0, 50)));
+        renderTuneLog();
+      }
+
       function renderTuneLog() {
         const audit = JSON.parse(localStorage.getItem('MP_V2_TEACHER_AUDIT_LOG') || '[]');
         const box = document.getElementById('tuneLogBox');
         box.innerHTML = audit.length === 0
           ? '尚無微調記錄'
-          : '最近微調記錄（僅後台可見）：' + audit.slice(0, 5).map(a => `<span class="badge bg-light text-dark border me-1">${esc(a.packId)} · ${esc(a.sid)} ➔ ${Number(a.newScore)}分</span>`).join('');
+          : '最近微調記錄（僅後台可見）：' + audit.slice(0, 5).map(a =>
+              a.correctionBonus !== undefined
+                ? `<span class="badge bg-info-subtle text-dark border me-1">${esc(a.packId)} · ${esc(a.sid)} 訂正 +${Number(a.correctionBonus)}分</span>`
+                : `<span class="badge bg-light text-dark border me-1">${esc(a.packId)} · ${esc(a.sid)} ➔ ${Number(a.newScore)}分</span>`
+            ).join('');
       }
 
       // D2 / A7: Student Help Q&A Reply
@@ -716,11 +819,13 @@
         previewBankAsTeacherTest: previewBankAsTeacherTest,
         init: init,
         populateStudentList: populateStudentList,
+        onTuneSelectionChange: onTuneSelectionChange,
         populateRepCandidateList: populateRepCandidateList,
         assignClassRep: assignClassRep,
         removeClassRepItem: removeClassRepItem,
         saveGlobalSettings: saveGlobalSettings,
         applyScoreTune: applyScoreTune,
+        applyCorrectionBonus: applyCorrectionBonus,
         saveQaReply: saveQaReply,
         registerExtensionItem: registerExtensionItem,
         exportAnonymizedResearchCsv: exportAnonymizedResearchCsv,

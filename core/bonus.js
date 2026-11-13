@@ -109,16 +109,56 @@
   // 1. Automated Bonus Cap Calculator (A8, D5)
   // =========================================================================
   /**
-   * Calculate final quiz score with auto-bonus (from drill > 80) + redeemed bonus,
-   * capped at teacher-configured `capScore` (default 60).
-   * Formula: final = max(raw, min(raw + autoBonus + redeemedBonus, capScore))
+   * Calculate final quiz/exam score with either:
+   * - Drill mode (default): auto-bonus (from drill > 80) + redeemed bonus, capped at `capScore` (default 60).
+   * - Correction mode (`bonusMode: 'correction'`): correction bonus (0..`maxCorrectionBonus`, default 5), capped at `capScore` (default 120).
+   * Formula: final = max(raw, min(raw + bonus, capScore))
    */
   function calculateQuizFinalScore(params) {
     const p = params || {};
     const rawScore = Number(p.rawScore || 0);
+    const rule = p.rule || {};
+    const bonusMode = rule.bonusMode || p.bonusMode || 'drill';
+
+    if (bonusMode === 'correction') {
+      const maxCorrectionBonus =
+        rule.maxCorrectionBonus !== undefined && rule.maxCorrectionBonus !== null
+          ? Number(rule.maxCorrectionBonus)
+          : p.maxCorrectionBonus !== undefined && p.maxCorrectionBonus !== null
+            ? Number(p.maxCorrectionBonus)
+            : 5;
+      const capScore =
+        rule.capScore !== undefined && rule.capScore !== null
+          ? Number(rule.capScore)
+          : p.capScore !== undefined && p.capScore !== null
+            ? Number(p.capScore)
+            : 120;
+      const correctionBonus = Math.max(
+        0,
+        Math.min(Number(p.correctionBonus || 0), maxCorrectionBonus)
+      );
+      const uncappedTotal = rawScore + correctionBonus;
+      const finalScore =
+        capScore > 0 ? Math.max(rawScore, Math.min(uncappedTotal, capScore)) : uncappedTotal;
+      const appliedBonus = Math.max(0, finalScore - rawScore);
+
+      return {
+        bonusMode: 'correction',
+        rawScore: rawScore,
+        correctionBonus: correctionBonus,
+        maxCorrectionBonus: maxCorrectionBonus,
+        drillScore: 0,
+        threshold: 0,
+        autoBonus: 0,
+        redeemedBonus: 0,
+        capScore: capScore,
+        finalScore: finalScore,
+        appliedBonus: appliedBonus,
+      };
+    }
+
     const drillScore = Number(p.drillScore || 0);
     const redeemedBonus = Math.max(0, Number(p.redeemedBonus || 0));
-    const rule = p.rule || {};
 
     const threshold =
       rule.threshold !== undefined ? Number(rule.threshold) : BONUS_DEFAULTS.drillThresholdScore;
@@ -137,7 +177,10 @@
     const appliedBonus = Math.max(0, finalScore - rawScore);
 
     return {
+      bonusMode: 'drill',
       rawScore: rawScore,
+      correctionBonus: 0,
+      maxCorrectionBonus: 0,
       drillScore: drillScore,
       threshold: threshold,
       autoBonus: autoBonus,
@@ -146,6 +189,15 @@
       finalScore: finalScore,
       appliedBonus: appliedBonus,
     };
+  }
+
+  function calculateMajorExamFinalScore(params) {
+    const p = Object.assign({}, params || {});
+    const rule = Object.assign(
+      { bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120 },
+      p.rule || {}
+    );
+    return calculateQuizFinalScore(Object.assign({}, p, { bonusMode: 'correction', rule: rule }));
   }
 
   // =========================================================================
@@ -564,6 +616,7 @@
 
   return {
     calculateQuizFinalScore: calculateQuizFinalScore,
+    calculateMajorExamFinalScore: calculateMajorExamFinalScore,
     PointsLedger: PointsLedger,
     ArenaManager: ArenaManager,
     GameBridge: GameBridge,

@@ -398,6 +398,7 @@
   <script src="js/bank_4cd_1102_adaptive.js"></script>
   <script src="js/bank_5bc1102.js"></script>
   <script src="js/quiz1023_encrypted_store.js"></script>
+  <script src="js/exam_1113_scores.js"></script>
 
   <!-- Load Unified Modular Core -->
   <script src="core/config.js"></script>
@@ -428,6 +429,7 @@
       let gateIsScanning = false;
       let gateCapturedSnap = null;
       let gateCloseCandidates = [];
+      let activeScorePackId = null;
 
       function esc(str) {
         return String(str == null ? '' : str)
@@ -1645,10 +1647,11 @@
         const packs = (reg && typeof reg.getScorePacksForClass === 'function')
           ? reg.getScorePacksForClass(currentStudent.classID)
           : ((reg && reg.scorePacks) || [
+              { id: 'exam_1113_t2', title: '1113 數學大測二', classes: ['4D'], adapter: 'exam_1113_store', packType: 'major_exam', bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120 },
               { id: 'quiz_1023', title: '1023 隨堂小測' },
               { id: 'quiz_1030', title: '1030 加密考卷' },
               { id: 'quiz_1106', title: '1106 隨堂小測' }
-            ]);
+            ].filter(p => !p.classes || p.classes.includes(String(currentStudent.classID || '').toUpperCase())));
         const safePacks = packs.length > 0 ? packs : [{ id: 'quiz_1023', title: '1023 隨堂小測' }];
         const tabs = document.getElementById('scorePackTabs');
         tabs.innerHTML = safePacks.map((p, idx) => `
@@ -1660,18 +1663,26 @@
 
       async function renderScorePack(packId) {
         if (!currentStudent) return;
+        activeScorePackId = packId;
         const sid = currentStudent.classID + '_' + currentStudent.studentID;
         document.querySelectorAll('#scorePackTabs button').forEach(btn => {
           const isAct = btn.getAttribute('data-pack-id') === packId;
           btn.className = 'btn btn-sm ' + (isAct ? 'btn-primary' : 'btn-outline-primary');
         });
 
+        const reg = window.MathPlatformRegistry;
+        const packDef = (reg && Array.isArray(reg.scorePacks) && reg.scorePacks.find(p => p.id === packId)) || null;
+        const isMajorExam = Boolean(packDef && (packDef.bonusMode === 'correction' || packDef.packType === 'major_exam')) || packId === 'exam_1113_t2';
+        const maxCorrectionBonus = (packDef && packDef.maxCorrectionBonus !== undefined) ? Number(packDef.maxCorrectionBonus) : 5;
+
         let rawScore = 0;
         let hasRecord = false;
+        let loadedCorrectionBonus = 0;
 
         if (window.MathCoreApi && typeof MathCoreApi.loadScorePack === 'function') {
           try {
             const loaded = await MathCoreApi.loadScorePack(packId, currentStudent);
+            if (activeScorePackId !== packId) return;
             if (loaded && loaded.ok && (loaded.found !== false)) {
               const r = loaded.record || loaded;
               const val = loaded.score !== undefined && loaded.score !== null
@@ -1682,7 +1693,21 @@
                 hasRecord = true;
               }
             }
+            if (loaded && loaded.correctionBonus !== undefined && loaded.correctionBonus !== null) {
+              loadedCorrectionBonus = Number(loaded.correctionBonus);
+            }
           } catch (e) {}
+        }
+
+        if (activeScorePackId !== packId) return;
+
+        if (!hasRecord && packId === 'exam_1113_t2' && typeof window.getStudentExam1113Record === 'function') {
+          const r = window.getStudentExam1113Record({ classID: currentStudent.classID, studentID: currentStudent.studentID, name: currentStudent.name });
+          if (r && r.score !== undefined && r.score !== null) {
+            rawScore = Number(r.score);
+            hasRecord = true;
+            if (r.correctionBonus !== undefined) loadedCorrectionBonus = Number(r.correctionBonus);
+          }
         }
 
         if (!hasRecord && packId === 'quiz_1023' && typeof window.getStudentQuiz1023Record === 'function') {
@@ -1708,35 +1733,62 @@
           hasRecord = true;
         }
 
-        const drillScore = Number(localStorage.getItem('MP_V2_BEST_DRILL_' + sid) || 0);
-        const capVal = Number(localStorage.getItem('MP_V2_BONUS_CAP') || 60);
+        const corrBonuses = JSON.parse(localStorage.getItem('MP_V2_CORRECTION_BONUSES') || '{}');
+        const packCaps = JSON.parse(localStorage.getItem('MP_V2_PACK_CAPS') || '{}');
+        const defaultPackCap = (packDef && packDef.capScore !== undefined)
+          ? Number(packDef.capScore)
+          : (isMajorExam ? 120 : Number(localStorage.getItem('MP_V2_BONUS_CAP') || 60));
+        const capVal = packCaps[packId] !== undefined ? Number(packCaps[packId]) : defaultPackCap;
 
-        // Sum redeemed quiz bonus points from student ledger (A13)
-        let redeemedBonus = 0;
-        if (window.MathCoreBonus && MathCoreBonus.PointsLedger) {
-          const bal = MathCoreBonus.PointsLedger.getBalance(sid);
-          (bal.entries || []).forEach(e => {
-            if (e.sourceType === 'redeem_quiz_bonus') {
-              redeemedBonus += Number((e.meta && e.meta.bonusPoints) || 1);
-            }
+        if (isMajorExam) {
+          const corrVal = corrBonuses[packId + ':' + sid] !== undefined
+            ? Number(corrBonuses[packId + ':' + sid])
+            : (corrBonuses[packId + '_' + sid] !== undefined ? Number(corrBonuses[packId + '_' + sid]) : loadedCorrectionBonus);
+
+          const calc = MathCoreBonus.calculateQuizFinalScore({
+            rawScore: rawScore,
+            correctionBonus: corrVal,
+            rule: { bonusMode: 'correction', maxCorrectionBonus: maxCorrectionBonus, capScore: capVal }
           });
+
+          document.getElementById('scoreDetailBox').innerHTML = `
+            <div class="row text-center">
+              <div class="col-3"><div class="small text-muted">大測原始分</div><div class="fs-4 fw-bold">${calc.rawScore}${hasRecord ? '' : ' <span class="badge bg-secondary small">待登錄</span>'}</div></div>
+              <div class="col-3"><div class="small text-muted">大測訂正加分（最多加${maxCorrectionBonus}分）</div><div class="fs-4 fw-bold text-primary">+${calc.correctionBonus}${calc.appliedBonus < calc.correctionBonus ? ` <span class="small text-muted">(實加 +${calc.appliedBonus})</span>` : ''}</div></div>
+              <div class="col-3"><div class="small text-muted">封頂上限 (老師設定)</div><div class="fs-4 fw-bold text-warning">${calc.capScore}</div></div>
+              <div class="col-3"><div class="small text-muted">最終核定成績</div><div class="fs-3 fw-bold text-success">${calc.finalScore}</div></div>
+            </div>
+          `;
+        } else {
+          const drillScore = Number(localStorage.getItem('MP_V2_BEST_DRILL_' + sid) || 0);
+
+          // Sum redeemed quiz bonus points from student ledger (A13)
+          let redeemedBonus = 0;
+          if (window.MathCoreBonus && MathCoreBonus.PointsLedger) {
+            const bal = MathCoreBonus.PointsLedger.getBalance(sid);
+            (bal.entries || []).forEach(e => {
+              if (e.sourceType === 'redeem_quiz_bonus') {
+                redeemedBonus += Number((e.meta && e.meta.bonusPoints) || 1);
+              }
+            });
+          }
+
+          const calc = MathCoreBonus.calculateQuizFinalScore({
+            rawScore: rawScore,
+            drillScore: drillScore,
+            redeemedBonus: redeemedBonus,
+            rule: { threshold: 80, perPoint: 1, capScore: capVal }
+          });
+
+          document.getElementById('scoreDetailBox').innerHTML = `
+            <div class="row text-center">
+              <div class="col-3"><div class="small text-muted">小測原始分</div><div class="fs-4 fw-bold">${calc.rawScore}${hasRecord ? '' : ' <span class="badge bg-secondary small">待登錄</span>'}</div></div>
+              <div class="col-3"><div class="small text-muted">刷題最高分 (>80加分)</div><div class="fs-4 fw-bold text-primary">${calc.drillScore} (+${calc.autoBonus + calc.redeemedBonus})</div></div>
+              <div class="col-3"><div class="small text-muted">封頂上限 (老師設定)</div><div class="fs-4 fw-bold text-warning">${calc.capScore}</div></div>
+              <div class="col-3"><div class="small text-muted">最終核定成績</div><div class="fs-3 fw-bold text-success">${calc.finalScore}</div></div>
+            </div>
+          `;
         }
-
-        const calc = MathCoreBonus.calculateQuizFinalScore({
-          rawScore: rawScore,
-          drillScore: drillScore,
-          redeemedBonus: redeemedBonus,
-          rule: { threshold: 80, perPoint: 1, capScore: capVal }
-        });
-
-        document.getElementById('scoreDetailBox').innerHTML = `
-          <div class="row text-center">
-            <div class="col-3"><div class="small text-muted">小測原始分</div><div class="fs-4 fw-bold">${calc.rawScore}${hasRecord ? '' : ' <span class="badge bg-secondary small">待登錄</span>'}</div></div>
-            <div class="col-3"><div class="small text-muted">刷題最高分 (>80加分)</div><div class="fs-4 fw-bold text-primary">${calc.drillScore} (+${calc.autoBonus + calc.redeemedBonus})</div></div>
-            <div class="col-3"><div class="small text-muted">封頂上限 (老師設定)</div><div class="fs-4 fw-bold text-warning">${calc.capScore}</div></div>
-            <div class="col-3"><div class="small text-muted">最終核定成績</div><div class="fs-3 fw-bold text-success">${calc.finalScore}</div></div>
-          </div>
-        `;
 
         // Render Leaderboard respecting teacher display mode (Section 六)
         const displayMode = localStorage.getItem('MP_V2_RANK_DISPLAY_MODE') || 'real_name';
@@ -1752,26 +1804,46 @@
         const scoredRoster = roster.map(s => {
           const sSid = s.classID + '_' + s.id;
           let sRaw = 0;
-          if (packId === 'quiz_1023' && typeof window.getStudentQuiz1023Record === 'function') {
+          let sRecCorr = 0;
+          if (packId === 'exam_1113_t2' && typeof window.getStudentExam1113Record === 'function') {
+            const rec = window.getStudentExam1113Record({ classID: s.classID, studentID: s.id, name: s.name });
+            if (rec && rec.score !== undefined && rec.score !== null) {
+              sRaw = Number(rec.score);
+              if (rec.correctionBonus !== undefined) sRecCorr = Number(rec.correctionBonus);
+            }
+          } else if (packId === 'quiz_1023' && typeof window.getStudentQuiz1023Record === 'function') {
             const rec = window.getStudentQuiz1023Record({ classID: s.classID, studentID: s.id, name: s.name });
             if (rec) sRaw = Number(rec.newTotal !== undefined ? rec.newTotal : (rec.origTotal !== undefined ? rec.origTotal : (rec.score || 0)));
           }
           if (overrides[packId + '_' + sSid] !== undefined) sRaw = Number(overrides[packId + '_' + sSid]);
           if (overrides2[packId + ':' + sSid] && overrides2[packId + ':' + sSid].newScore !== undefined) sRaw = Number(overrides2[packId + ':' + sSid].newScore);
-          const sDrill = Number(localStorage.getItem('MP_V2_BEST_DRILL_' + sSid) || 0);
-          const sCalc = MathCoreBonus.calculateQuizFinalScore({
-            rawScore: sRaw,
-            drillScore: sDrill,
-            redeemedBonus: 0,
-            rule: { threshold: 80, perPoint: 1, capScore: capVal }
-          });
+
+          let sCalc;
+          if (isMajorExam) {
+            const sCorr = corrBonuses[packId + ':' + sSid] !== undefined
+              ? Number(corrBonuses[packId + ':' + sSid])
+              : (corrBonuses[packId + '_' + sSid] !== undefined ? Number(corrBonuses[packId + '_' + sSid]) : sRecCorr);
+            sCalc = MathCoreBonus.calculateQuizFinalScore({
+              rawScore: sRaw,
+              correctionBonus: sCorr,
+              rule: { bonusMode: 'correction', maxCorrectionBonus: maxCorrectionBonus, capScore: capVal }
+            });
+          } else {
+            const sDrill = Number(localStorage.getItem('MP_V2_BEST_DRILL_' + sSid) || 0);
+            sCalc = MathCoreBonus.calculateQuizFinalScore({
+              rawScore: sRaw,
+              drillScore: sDrill,
+              redeemedBonus: 0,
+              rule: { threshold: 80, perPoint: 1, capScore: capVal }
+            });
+          }
           return { student: s, score: sCalc.finalScore };
-        }).sort((a, b) => b.score - a.score);
+        }).sort((a, b) => (b.score - a.score) || (Number(a.student.id) - Number(b.student.id)));
 
         const rows = scoredRoster.slice(0, 10).map((item, idx) => {
           const s = item.student;
           const label = (window.MathCoreUI && typeof MathCoreUI.formatLeaderboardName === 'function')
-            ? MathCoreUI.formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, idx + 1, displayMode)
+            ? MathCoreUI.formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, displayMode, idx)
             : `${s.classID} ${s.id}號 ${s.name}`;
           return `<tr><td>#${idx + 1}</td><td>${esc(label)}</td><td class="fw-bold">${item.score} 分</td></tr>`;
         }).join('');
