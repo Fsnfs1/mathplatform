@@ -1647,7 +1647,7 @@
         const packs = (reg && typeof reg.getScorePacksForClass === 'function')
           ? reg.getScorePacksForClass(currentStudent.classID)
           : ((reg && reg.scorePacks) || [
-              { id: 'exam_1113_t2', title: '1113 數學大測二', classes: ['4D'], adapter: 'exam_1113_store', packType: 'major_exam', bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120 },
+              { id: 'exam_1113_t2', title: '1113 數學大測二', classes: ['4D'], adapter: 'exam_1113_store', packType: 'major_exam', bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120, leaderboardMinScore: 70 },
               { id: 'quiz_1023', title: '1023 隨堂小測' },
               { id: 'quiz_1030', title: '1030 加密考卷' },
               { id: 'quiz_1106', title: '1106 隨堂小測' }
@@ -1840,14 +1840,30 @@
           return { student: s, score: sCalc.finalScore };
         }).sort((a, b) => (b.score - a.score) || (Number(a.student.id) - Number(b.student.id)));
 
-        const rows = scoredRoster.slice(0, 10).map((item, idx) => {
-          const s = item.student;
-          const label = (window.MathCoreUI && typeof MathCoreUI.formatLeaderboardName === 'function')
-            ? MathCoreUI.formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, displayMode, idx)
-            : `${s.classID} ${s.id}號 ${s.name}`;
-          return `<tr><td>#${idx + 1}</td><td>${esc(label)}</td><td class="fw-bold">${item.score} 分</td></tr>`;
-        }).join('');
+        const leaderboardMinScore = (packDef && packDef.leaderboardMinScore !== undefined && packDef.leaderboardMinScore !== null)
+          ? Number(packDef.leaderboardMinScore)
+          : (packId === 'exam_1113_t2' ? 70 : null);
+
+        const topRoster = (window.MathCoreUI && typeof MathCoreUI.buildLeaderboardEntries === 'function')
+          ? MathCoreUI.buildLeaderboardEntries(scoredRoster, { minScore: leaderboardMinScore, limit: 10 })
+          : ((leaderboardMinScore !== null && !isNaN(leaderboardMinScore))
+              ? scoredRoster.filter(item => item.score >= leaderboardMinScore)
+              : scoredRoster).slice(0, 10);
+
+        const rows = topRoster.length === 0
+          ? `<tr><td colspan="3" class="text-muted text-center py-2">暫無達 ${esc(String(leaderboardMinScore))} 分以上之上榜成績</td></tr>`
+          : topRoster.map((item, idx) => {
+              const s = item.student;
+              const label = (window.MathCoreUI && typeof MathCoreUI.formatLeaderboardName === 'function')
+                ? MathCoreUI.formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, displayMode, idx)
+                : `${s.classID} ${s.id}號 ${s.name}`;
+              return `<tr><td>#${idx + 1}</td><td>${esc(label)}</td><td class="fw-bold">${item.score} 分</td></tr>`;
+            }).join('');
+        const minScoreNotice = (leaderboardMinScore !== null && !isNaN(leaderboardMinScore))
+          ? `<div class="text-muted small mb-2">📌 僅顯示 ${esc(String(leaderboardMinScore))} 分以上的前 10 名榜單（未達 ${esc(String(leaderboardMinScore))} 分不予顯示）</div>`
+          : '';
         lbBox.innerHTML = `
+          ${minScoreNotice}
           <table class="table table-sm table-striped mb-0">
             <thead><tr><th>名次</th><th>學生 (${esc(displayMode)})</th><th>成績</th></tr></thead>
             <tbody>${rows}</tbody>

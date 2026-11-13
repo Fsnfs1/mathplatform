@@ -139,6 +139,7 @@
       bonusMode: 'correction',
       maxCorrectionBonus: 5,
       capScore: 120,
+      leaderboardMinScore: 70,
     },
     {
       id: 'quiz_1023',

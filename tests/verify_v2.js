@@ -339,6 +339,32 @@ async function runAllTests() {
   assert.ok(appHtml.includes('formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, displayMode, idx)'), 'app.html must pass (student, displayMode, idx) in correct order');
   assert.strictEqual(ui.formatLeaderboardName({ classID: '4D', studentID: 11, name: '周梓霖' }, 'nickname', 0), '周*霖');
   assert.strictEqual(ui.formatLeaderboardName({ classID: '4D', studentID: 11, name: '周梓霖' }, 'seat_only', 0), '4D #11');
+
+  // Leaderboard >= 70 & Top 10 rule for exam_1113_t2 (exclude < 70; regular quizzes unaffected)
+  assert.strictEqual(packs4D[0].leaderboardMinScore, 70, 'exam_1113_t2 must enforce leaderboardMinScore: 70');
+  const quiz1023Pack = packs4D.find(p => p.id === 'quiz_1023');
+  assert.strictEqual(quiz1023Pack.leaderboardMinScore, undefined, 'Regular quiz_1023 must not restrict leaderboard below 70');
+
+  const ranked1113 = exam1113.getAllExam1113Records('4D')
+    .map(r => ({ student: { classID: r.classID, id: r.studentID, name: r.name }, score: r.score }))
+    .sort((a, b) => (b.score - a.score) || (Number(a.student.id) - Number(b.student.id)));
+  const top1113 = ui.buildLeaderboardEntries(ranked1113, { minScore: packs4D[0].leaderboardMinScore, limit: 10 });
+  assert.deepStrictEqual(
+    top1113.map(e => [e.student.name, e.score]),
+    [['洪佳佳', 89], ['翁淮洋', 74], ['余浩賢', 70], ['施舒晨', 70]],
+    'exam_1113_t2 leaderboard must only include >= 70 scores and exclude < 70 (69, 68, etc.)'
+  );
+  // Top 10 cap when >10 students score >= 70
+  const twelveAbove70 = Array.from({ length: 12 }, (_, i) => ({ student: { id: i + 1 }, score: 95 - i }));
+  twelveAbove70.push({ student: { id: 99 }, score: 69 });
+  const cappedTop10 = ui.buildLeaderboardEntries(twelveAbove70, { minScore: 70, limit: 10 });
+  assert.strictEqual(cappedTop10.length, 10, 'Leaderboard must cap at top 10 entries when >10 qualify');
+  assert.ok(cappedTop10.every(e => e.score >= 70), 'All displayed entries must be >= 70');
+  // All < 70 yields empty list
+  assert.strictEqual(ui.buildLeaderboardEntries([{ score: 69 }, { score: 50 }], { minScore: 70, limit: 10 }).length, 0);
+  // Regular quiz without minScore keeps < 70 entries
+  assert.strictEqual(ui.buildLeaderboardEntries([{ score: 55 }, { score: 40 }], { minScore: null, limit: 10 }).length, 2);
+  assert.ok(appHtml.includes('buildLeaderboardEntries(scoredRoster, { minScore: leaderboardMinScore, limit: 10 })'), 'app.html must use buildLeaderboardEntries with leaderboardMinScore and limit 10');
   console.log('[PASS] 10. 1113 數學大測二 Store, Left-Most A6 Tab, Max +5 Correction Bonus, 120 Cap & UI Integrity');
 
   console.log('=== ALL TESTS PASSED (10/10) ===');

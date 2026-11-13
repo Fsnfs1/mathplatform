@@ -301,6 +301,35 @@
     return rawName || (classID ? `${classID} #${padId}` : '未知同學');
   }
 
+  /**
+   * Filters and limits ranked leaderboard entries.
+   * When `options.minScore` is a valid number, entries with `score < minScore` are excluded.
+   * Caps result length to `options.limit` (defaults to 10).
+   */
+  function buildLeaderboardEntries(entries, options) {
+    const list = Array.isArray(entries) ? entries.slice() : [];
+    const opts = options && typeof options === 'object' ? options : {};
+    const hasMin =
+      opts.minScore !== undefined &&
+      opts.minScore !== null &&
+      opts.minScore !== '' &&
+      !isNaN(Number(opts.minScore));
+    const minScore = hasMin ? Number(opts.minScore) : null;
+    const limit =
+      opts.limit !== undefined && opts.limit !== null && !isNaN(Number(opts.limit))
+        ? Math.max(0, Number(opts.limit))
+        : 10;
+
+    const filtered =
+      minScore !== null
+        ? list.filter(function (item) {
+            return item && Number(item.score) >= minScore;
+          })
+        : list;
+
+    return filtered.slice(0, limit);
+  }
+
   return {
     showScreen: showScreen,
     getCurrentScreen: getCurrentScreen,
@@ -312,5 +341,6 @@
     formatMMSS: formatMMSS,
     renderNetworkBanner: renderNetworkBanner,
     formatLeaderboardName: formatLeaderboardName,
+    buildLeaderboardEntries: buildLeaderboardEntries,
   };
 });
