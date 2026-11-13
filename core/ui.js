@@ -330,7 +330,47 @@
     return filtered.slice(0, limit);
   }
 
+  /**
+   * A11 phone detection. Returns true only for phones (iPhone/Android phone/etc.);
+   * iPad, Android tablets and desktops/laptops return false.
+   * `envOverride` = { ua, maxTouch, minScreen, coarsePointer } for testing.
+   */
+  function isPhoneDevice(envOverride) {
+    const env = envOverride || {};
+    const g = typeof window !== 'undefined' ? window : {};
+    const nav = g.navigator || {};
+    const ua = String(env.ua != null ? env.ua : nav.userAgent || '');
+    const maxTouch = Number(env.maxTouch != null ? env.maxTouch : nav.maxTouchPoints || 0);
+    let minScreen = env.minScreen;
+    if (minScreen == null) {
+      const s = g.screen || {};
+      minScreen = Math.min(Number(s.width || 0), Number(s.height || 0)) || 0;
+    }
+    minScreen = Number(minScreen) || 0;
+    let coarse = env.coarsePointer;
+    if (coarse == null) {
+      try {
+        coarse = !!(g.matchMedia && g.matchMedia('(pointer: coarse)').matches);
+      } catch (e) {
+        coarse = false;
+      }
+    }
+    // Tablets / iPad -> keep embedded iframe
+    if (/iPad/i.test(ua) || /Tablet|PlayBook|Silk/i.test(ua)) return false;
+    if (/Macintosh/i.test(ua) && maxTouch > 1 && minScreen >= 600) return false;
+    if (/Android/i.test(ua) && !/Mobile/i.test(ua) && (minScreen === 0 || minScreen >= 600)) return false;
+    // Phones
+    if (/iPhone|iPod/i.test(ua)) return true;
+    if (/Android/i.test(ua) && /Mobile/i.test(ua)) return true;
+    if (/Windows Phone|IEMobile|BlackBerry|Opera Mini|HarmonyOS.*Phone/i.test(ua)) return true;
+    if (/Macintosh/i.test(ua) && maxTouch > 1 && minScreen > 0 && minScreen <= 540) return true;
+    if (/Android/i.test(ua) && minScreen > 0 && minScreen <= 540) return true;
+    if (maxTouch > 0 && coarse && minScreen > 0 && minScreen <= 540) return true;
+    return false;
+  }
+
   return {
+    isPhoneDevice: isPhoneDevice,
     showScreen: showScreen,
     getCurrentScreen: getCurrentScreen,
     showToast: showToast,

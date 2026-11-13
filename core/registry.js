@@ -203,18 +203,21 @@
             id: 'trig-ratio',
             title: '三角比極速挑戰',
             path: 'games/328.HTML',
+          mobilePath: 'games/328-mobile.html',
             scoringMode: 'native',
           },
           {
             id: 'bash-nim',
             title: '高級巴什博弈挑戰',
             path: 'games/2.HTML',
+          mobilePath: 'games/2-mobile.html',
             scoringMode: 'win_speed',
           },
           {
             id: 'ring-nim',
             title: '高級套圈博弈挑戰',
             path: 'games/4.html',
+          mobilePath: 'games/4-mobile.html',
             scoringMode: 'win_speed',
           },
         ];

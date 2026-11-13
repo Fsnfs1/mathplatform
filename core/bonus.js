@@ -537,7 +537,16 @@
       const gameId = p.gameId || 'trig-ratio';
       const durationMs = Math.max(1000, Number(p.durationMs || 15000));
 
-      const timeStatus = this.recordPlayDuration(sid, durationMs);
+      let skipRecord = !!p.skipDurationRecord;
+      if (!skipRecord && typeof window !== 'undefined' && window.parent && window.parent !== window) {
+        // Embedded in app.html iframe: the parent's 1s live tracker already records playtime.
+        try {
+          skipRecord = !!(window.parent.AppUI && typeof window.parent.AppUI.launchGame === 'function');
+        } catch (e) {}
+      }
+      const timeStatus = skipRecord
+        ? this.getPlaytimeStatus(sid)
+        : this.recordPlayDuration(sid, durationMs);
       const finalScore = this.computeGameScore({
         gameId: gameId,
         score: p.score,

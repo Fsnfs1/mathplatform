@@ -1,0 +1,20 @@
+/* games/mobile-shell.css — shared full-screen chrome for phone ports (games/*-mobile.html) */
+:root { --mgs-hud-h: 46px; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+body.mgs-body { height: 100dvh; padding-top: calc(var(--mgs-hud-h) + env(safe-area-inset-top)) !important; padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
+#mgs-hud { position: fixed; top: 0; left: 0; right: 0; z-index: 99990; box-sizing: border-box; height: calc(var(--mgs-hud-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left)); display: flex; align-items: center; gap: 6px; background: rgba(2, 6, 23, 0.94); border-bottom: 2px solid #334155; color: #f8fafc; font-family: system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; font-size: 14px; }
+#mgs-hud button { min-height: 36px; min-width: 36px; border-radius: 10px; border: 1px solid #475569; background: #1e293b; color: #f8fafc; font-size: 14px; font-weight: 700; padding: 0 10px; cursor: pointer; }
+#mgs-hud .mgs-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #0f172a; border: 1px solid #334155; border-radius: 999px; padding: 4px 10px; font-size: 13px; }
+#mgs-countdown { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 16px; padding: 4px 10px; border-radius: 999px; background: #065f46; border: 1px solid #10b981; }
+#mgs-countdown.mgs-warn { background: #92400e; border-color: #f59e0b; animation: mgsPulse 1s infinite alternate; }
+#mgs-countdown.mgs-locked { background: #7f1d1d; border-color: #ef4444; }
+#mgs-net { flex: 0 0 auto; font-size: 12px; }
+@keyframes mgsPulse { from { opacity: 1; } to { opacity: 0.6; } }
+#mgs-warn-banner { position: fixed; left: 8px; right: 8px; top: calc(var(--mgs-hud-h) + env(safe-area-inset-top) + 6px); z-index: 99991; background: #f59e0b; color: #1f2937; font-weight: 800; border-radius: 12px; padding: 10px 12px; text-align: center; font-family: system-ui, sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+#mgs-lock-overlay, #mgs-auth-gate { position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; box-sizing: border-box; background: rgba(2, 6, 23, 0.97); color: #f8fafc; text-align: center; font-family: system-ui, -apple-system, "PingFang TC", sans-serif; }
+#mgs-lock-overlay h2, #mgs-auth-gate h2 { margin: 0; font-size: 24px; }
+#mgs-lock-overlay a, #mgs-auth-gate a { display: block; width: min(320px, 90vw); padding: 14px; border-radius: 14px; font-size: 18px; font-weight: 800; text-decoration: none; color: #fff; background: #2563eb; }
+#mgs-lock-overlay a.mgs-secondary { background: #475569; }
+.mgs-top10 { width: 100%; border-collapse: collapse; font-size: 15px; }
+.mgs-top10 td, .mgs-top10 th { padding: 4px 6px; border-bottom: 1px solid #334155; }
+.mgs-top10 .mgs-me { color: #facc15; font-weight: 800; }

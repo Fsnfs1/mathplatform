@@ -324,8 +324,10 @@
       <div id="gameIframeWrap" class="d-none mb-3">
         <div class="d-flex justify-content-between align-items-center bg-dark text-white px-3 py-2 rounded-top">
           <span id="activeGameTitle">遊戲進行中</span>
+          <span id="gameIframePlaytimeBadge" class="badge fs-6 bg-success ms-auto me-2" aria-live="polite">⏳ 今日剩餘：30分00秒</span>
           <button class="btn btn-sm btn-danger" onclick="AppUI.closeGameIframe()">結束並返回大廳</button>
         </div>
+        <div id="gameIframeWarn" class="d-none alert alert-warning py-1 px-3 mb-0 rounded-0 fw-bold">⏰ 今日遊戲時間只剩 5 分鐘以內，時間到會自動關閉遊戲！</div>
         <iframe id="gameIframe" style="width:100%; height:560px; border:2px solid #1e293b; border-radius:0 0 10px 10px;"></iframe>
       </div>
 
@@ -1071,6 +1073,22 @@
           const cs = MathCoreAuth.getConsentStatus(sid);
           if (cs && cs.decided) consentToggle.checked = !!cs.agreed;
         }
+
+        // Return routing from mobile full-screen game pages (games/*-mobile.html)
+        try {
+          const qs = new URLSearchParams(window.location.search || '');
+          const hashScreen = String(window.location.hash || '').replace('#', '');
+          const target = qs.get('screen') || (hashScreen === 'games' || hashScreen === 'points' ? hashScreen : '');
+          if (target === 'games' || target === 'points') {
+            if (qs.has('screen') && window.history && history.replaceState) {
+              qs.delete('screen');
+              const rest = qs.toString();
+              history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : ''));
+            }
+            if (target === 'games') openGamesApp(); else openPointsApp();
+            return;
+          }
+        } catch (e) {}
 
         // Seat 98 teacher test account (when launched from teacher preview): go straight to question bank selector
         if (isSeat98Test) {
@@ -2069,18 +2087,35 @@
       }
 
       // === A11 Math Games Hall ===
+      let gameWarnShown = false;
+      function formatPlaytime(ms) {
+        const remMin = Math.floor(Math.max(0, ms) / 60000);
+        const remSec = Math.floor((Math.max(0, ms) % 60000) / 1000);
+        return `${remMin}分${String(remSec).padStart(2, '0')}秒`;
+      }
+
       function updateGamePlaytimeBadge() {
         if (!currentStudent || !window.MathCoreBonus) return null;
         const sid = currentStudent.classID + '_' + currentStudent.studentID;
         const st = MathCoreBonus.GameBridge.getPlaytimeStatus(sid);
-        const remMin = Math.floor(st.remainingMs / 60000);
-        const remSec = Math.floor((st.remainingMs % 60000) / 1000);
-        const badge = document.getElementById('gamePlaytimeBadge');
-        if (badge) {
-          badge.className = 'badge fs-6 ' + (st.locked ? 'bg-danger' : (st.warning ? 'bg-warning text-dark' : 'bg-success'));
-          badge.textContent = `今日剩餘：${remMin}分${String(remSec).padStart(2, '0')}秒`;
-        }
+        const cls = st.locked ? 'bg-danger' : (st.warn ? 'bg-warning text-dark' : 'bg-success');
+        const text = `今日剩餘：${formatPlaytime(st.remainingMs)}`;
+        ['gamePlaytimeBadge', 'gameIframePlaytimeBadge'].forEach(function (id) {
+          const badge = document.getElementById(id);
+          if (badge) {
+            badge.className = 'badge fs-6 ' + cls;
+            badge.textContent = (id === 'gameIframePlaytimeBadge' ? '⏳ ' : '') + text;
+          }
+        });
         return st;
+      }
+
+      function isPhoneDevice() {
+        try {
+          return !!(window.MathCoreUI && typeof MathCoreUI.isPhoneDevice === 'function' && MathCoreUI.isPhoneDevice());
+        } catch (e) {
+          return false;
+        }
       }
 
       function stopGamePlaytimeTracker() {
@@ -2088,9 +2123,9 @@
           clearInterval(gameTimerId);
           gameTimerId = null;
         }
-        if (activeGameId && gameLastTickTs > 0 && currentStudent && window.MathCoreBonus) {
+        if (activeGameId && gameLastTickTs > 0 && currentStudent && window.MathCoreBonus && document.visibilityState !== 'hidden') {
           const sid = currentStudent.classID + '_' + currentStudent.studentID;
-          const elapsed = Math.max(0, Date.now() - gameLastTickTs);
+          const elapsed = Math.min(5000, Math.max(0, Date.now() - gameLastTickTs));
           if (elapsed > 0) {
             MathCoreBonus.GameBridge.recordPlayDuration(sid, elapsed, activeGameId);
           }
@@ -2105,16 +2140,17 @@
         const regGames = (window.MathPlatformRegistry && MathPlatformRegistry.games) || [];
         const cfgGames = (window.MathCoreConfig && MathCoreConfig.games && MathCoreConfig.games.catalog) || [];
         const games = regGames.length > 0 ? regGames : cfgGames;
+        const phone = isPhoneDevice();
 
         document.getElementById('gameCardsRow').innerHTML = games.map(g => `
           <div class="col-md-4">
             <div class="p-3 border rounded bg-light h-100 d-flex flex-column justify-content-between">
               <div>
                 <h6 class="fw-bold">${esc(g.title)}</h6>
-                <div class="small text-muted mb-2">計分模式：${g.scoringMode === 'win_speed' ? '勝場100分 + 速度加成' : '原生連擊計分'}</div>
+                <div class="small text-muted mb-2">計分模式：${g.scoringMode === 'win_speed' ? '勝場100分 + 速度加成' : '原生連擊計分'}${phone && g.mobilePath ? ' · 📱 手機全屏版' : ''}</div>
               </div>
               <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm flex-grow-1" data-gid="${esc(g.id)}" data-gtitle="${esc(g.title)}" data-gpath="${esc(g.path)}" onclick="AppUI.launchGameFromBtn(this)" ${st.locked ? 'disabled' : ''}>${st.locked ? '今日時長已用完' : '▶ 開始遊戲'}</button>
+                <button class="btn btn-primary btn-sm flex-grow-1" data-gid="${esc(g.id)}" data-gtitle="${esc(g.title)}" data-gpath="${esc(g.path)}" data-gmobile="${esc(g.mobilePath || '')}" onclick="AppUI.launchGameFromBtn(this)" ${st.locked ? 'disabled' : ''}>${st.locked ? '今日時長已用完' : '▶ 開始遊戲'}</button>
                 <button class="btn btn-outline-secondary btn-sm" onclick="AppUI.renderGamesLeaderboard('${esc(g.id)}')">榜單</button>
               </div>
             </div>
@@ -2126,31 +2162,54 @@
 
       function launchGameFromBtn(btn) {
         if (!btn) return;
-        launchGame(btn.getAttribute('data-gid'), btn.getAttribute('data-gtitle'), btn.getAttribute('data-gpath'));
+        launchGame(btn.getAttribute('data-gid'), btn.getAttribute('data-gtitle'), btn.getAttribute('data-gpath'), btn.getAttribute('data-gmobile'));
       }
 
-      function launchGame(gameId, title, path) {
+      function launchGame(gameId, title, path, mobilePath) {
         if (!currentStudent) return;
         const sid = currentStudent.classID + '_' + currentStudent.studentID;
         const st = MathCoreBonus.GameBridge.getPlaytimeStatus(sid);
-        if (st.locked) {
+        if (st.locked || st.remainingMs <= 0) {
           alert('⚠️ 今日 30 分鐘遊戲防沉迷時長已用完！請進入「積分中心」用積分兌換加時。');
+          openPointsApp();
           return;
         }
+        if (!mobilePath) {
+          const regGames = (window.MathPlatformRegistry && MathPlatformRegistry.games) || [];
+          const cfgGames = (window.MathCoreConfig && MathCoreConfig.games && MathCoreConfig.games.catalog) || [];
+          const found = regGames.concat(cfgGames).find(g => g && g.id === gameId && g.mobilePath);
+          mobilePath = found ? found.mobilePath : '';
+        }
         stopGamePlaytimeTracker();
+        if (mobilePath && isPhoneDevice()) {
+          // Phones: open the genuinely full-screen mobile-native port (it runs its own countdown tracker).
+          window.location.href = mobilePath + '?gameId=' + encodeURIComponent(gameId);
+          return;
+        }
         activeGameId = gameId;
         gameLastTickTs = Date.now();
+        gameWarnShown = false;
         document.getElementById('activeGameTitle').textContent = `🎮 ${title}（實名玩家：${currentStudent.name}）`;
         document.getElementById('gameIframe').src = path;
         document.getElementById('gameIframeWrap').classList.remove('d-none');
+        updateGamePlaytimeBadge();
 
         gameTimerId = setInterval(function () {
           if (!currentStudent || !activeGameId) return;
           const now = Date.now();
-          const delta = Math.max(0, now - gameLastTickTs);
+          const delta = Math.min(5000, Math.max(0, now - gameLastTickTs));
           gameLastTickTs = now;
+          if (document.visibilityState === 'hidden') return; // pause countdown while tab hidden
           const curSt = MathCoreBonus.GameBridge.recordPlayDuration(sid, delta, activeGameId);
           updateGamePlaytimeBadge();
+          const warnEl = document.getElementById('gameIframeWarn');
+          if (curSt.warn && !gameWarnShown) {
+            gameWarnShown = true;
+            if (warnEl) warnEl.classList.remove('d-none');
+            if (window.MathCoreUI && typeof MathCoreUI.showToast === 'function') {
+              try { MathCoreUI.showToast('⏰ 今日遊戲時間只剩 5 分鐘！', 'warning'); } catch (e) {}
+            }
+          }
           if (curSt.locked || curSt.remainingMs <= 0) {
             closeGameIframe();
             alert('⏰ 今日遊戲時長已達防沉迷上限，系統已自動關閉遊戲！');
@@ -2162,6 +2221,8 @@
         stopGamePlaytimeTracker();
         document.getElementById('gameIframe').src = 'about:blank';
         document.getElementById('gameIframeWrap').classList.add('d-none');
+        const warnEl = document.getElementById('gameIframeWarn');
+        if (warnEl) warnEl.classList.add('d-none');
         openGamesApp();
       }
 
@@ -2258,6 +2319,7 @@
       };
     })();
 
+    window.AppUI = AppUI;
     window.addEventListener('DOMContentLoaded', AppUI.init);
   </script>
 </body>
