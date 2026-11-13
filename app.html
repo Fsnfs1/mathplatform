@@ -1830,7 +1830,7 @@
         const packs = (reg && typeof reg.getScorePacksForClass === 'function')
           ? reg.getScorePacksForClass(currentStudent.classID)
           : ((reg && reg.scorePacks) || [
-              { id: 'exam_1113_t2', title: '1113 數學大測二', classes: ['4D'], adapter: 'exam_1113_store', packType: 'major_exam', bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120, leaderboardMinScore: 70 },
+              { id: 'exam_1113_t2', title: '1113 數學大測二', classes: ['4D', '5B'], adapter: 'exam_1113_store', packType: 'major_exam', bonusMode: 'correction', maxCorrectionBonus: 5, capScore: 120, leaderboardMinScore: 70 },
               { id: 'quiz_1023', title: '1023 隨堂小測' },
               { id: 'quiz_1030', title: '1030 加密考卷' },
               { id: 'quiz_1106', title: '1106 隨堂小測' }

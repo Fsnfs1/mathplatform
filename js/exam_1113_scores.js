@@ -1,6 +1,6 @@
 /**
  * exam_1113_scores.js
- * Static Score Store for 1113 數學大測二 (4D)
+ * Static Score Store for 1113 數學大測二 (4D, 5B)
  * UMD module supporting Browser globals, AMD, and Node.js CommonJS.
  */
 (function (root, factory) {
@@ -46,7 +46,35 @@
     { classID: '4D', studentID: 28, name: '賴君華', score: 41 },
     { classID: '4D', studentID: 29, name: '譚佩泳', score: 68 },
     { classID: '4D', studentID: 30, name: '鄭梓浩', score: 9 },
-    { classID: '4D', studentID: 31, name: '鄭國樺', score: 31 }
+    { classID: '4D', studentID: 31, name: '鄭國樺', score: 31 },
+    { classID: '5B', studentID: 1, name: '吳鎂澄', score: 55 },
+    { classID: '5B', studentID: 2, name: '蘇子恩', score: 52 },
+    { classID: '5B', studentID: 3, name: '李潤歌', score: 79 },
+    { classID: '5B', studentID: 4, name: '李曉熹', score: 34 },
+    { classID: '5B', studentID: 5, name: '周鈺燕', score: 28 },
+    { classID: '5B', studentID: 6, name: '林煜皓', score: 82 },
+    { classID: '5B', studentID: 7, name: '林穎豪', score: 52 },
+    { classID: '5B', studentID: 8, name: '柯鈺鑫', score: 18 },
+    { classID: '5B', studentID: 9, name: '洪泳棋', score: 82 },
+    { classID: '5B', studentID: 10, name: '高尚禮', score: 111 },
+    { classID: '5B', studentID: 11, name: '張啟赫', score: 40 },
+    { classID: '5B', studentID: 12, name: '張嘉城', score: 37 },
+    { classID: '5B', studentID: 13, name: '梁泳心', score: 101 },
+    { classID: '5B', studentID: 14, name: '梁芷韻', score: 55 },
+    { classID: '5B', studentID: 15, name: '梁偉烽', score: 44 },
+    { classID: '5B', studentID: 16, name: '姚皓然', score: 90 },
+    { classID: '5B', studentID: 17, name: '陳施攸', score: 90 },
+    { classID: '5B', studentID: 18, name: '陳柏琳', score: 93 },
+    { classID: '5B', studentID: 19, name: '陳國良', score: 42 },
+    { classID: '5B', studentID: 20, name: '陳紫涵', score: 56 },
+    { classID: '5B', studentID: 21, name: '陳鑫源', score: 38 },
+    { classID: '5B', studentID: 22, name: '彭婷婷', score: 63 },
+    { classID: '5B', studentID: 23, name: '黃少彬', score: 55 },
+    { classID: '5B', studentID: 24, name: '黃卓琳', score: 82 },
+    { classID: '5B', studentID: 25, name: '黃婉瑜', score: 37 },
+    { classID: '5B', studentID: 26, name: '葉棨釗', score: 75 },
+    { classID: '5B', studentID: 27, name: '潘子聰', score: 27 },
+    { classID: '5B', studentID: 28, name: '黎宛旻', score: 52 }
   ];
 
   var EXAM_1113_SCORES = {};

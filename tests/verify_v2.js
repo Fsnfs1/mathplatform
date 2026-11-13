@@ -277,7 +277,14 @@ async function runAllTests() {
   assert.strictEqual(packs4D[0].title, '1113 數學大測二');
   assert.strictEqual(packs4D[0].capScore, 120);
   assert.strictEqual(packs4D[0].maxCorrectionBonus, 5);
-  assert.strictEqual(registry.getScorePacksForClass('4C')[0].id, 'quiz_1023', 'Non-4D classes retain original first tab');
+  const packs5B = registry.getScorePacksForClass('5B');
+  assert.ok(packs5B.length >= 4 && packs5B[0].id === 'exam_1113_t2', '5B first (left-most) A6 tab must be exam_1113_t2');
+  assert.strictEqual(packs5B[0].title, '1113 數學大測二');
+  assert.strictEqual(packs5B[0].capScore, 120);
+  assert.strictEqual(packs5B[0].maxCorrectionBonus, 5);
+  assert.strictEqual(packs5B[0].leaderboardMinScore, 70);
+  assert.strictEqual(registry.getScorePacksForClass('4C')[0].id, 'quiz_1023', 'Non-4D/5B classes retain original first tab');
+  assert.strictEqual(registry.getScorePacksForClass('5C')[0].id, 'quiz_1106', '5C retains original first tab');
 
   const expected1113Scores = [
     ['洪佳佳', 89], ['翁淮洋', 74], ['余浩賢', 70], ['施舒晨', 70], ['盧肇琪', 69],
@@ -305,9 +312,36 @@ async function runAllTests() {
   assert.strictEqual(missing12.found, false);
   assert.strictEqual(missing12.score, null);
 
+  // 5B 1113 數學大測二: all 28 student scores
+  const expected5B1113Scores = [
+    [10, '高尚禮', 111], [13, '梁泳心', 101], [18, '陳柏琳', 93], [16, '姚皓然', 90], [17, '陳施攸', 90],
+    [6, '林煜皓', 82], [9, '洪泳棋', 82], [24, '黃卓琳', 82], [3, '李潤歌', 79], [26, '葉棨釗', 75],
+    [22, '彭婷婷', 63], [20, '陳紫涵', 56], [14, '梁芷韻', 55], [23, '黃少彬', 55], [1, '吳鎂澄', 55],
+    [2, '蘇子恩', 52], [7, '林穎豪', 52], [28, '黎宛旻', 52], [15, '梁偉烽', 44], [19, '陳國良', 42],
+    [11, '張啟赫', 40], [21, '陳鑫源', 38], [12, '張嘉城', 37], [25, '黃婉瑜', 37], [4, '李曉熹', 34],
+    [5, '周鈺燕', 28], [27, '潘子聰', 27], [8, '柯鈺鑫', 18]
+  ];
+  assert.strictEqual(exam1113.getAllExam1113Records('5B').length, 28, 'Exactly 28 5B student scores injected');
+  const roster5B = rosterMod.getStudentsByClass('5B');
+  for (const [stuId, stuName, expectedScore] of expected5B1113Scores) {
+    const stu = roster5B.find(s => s.id === stuId && s.name === stuName);
+    assert.ok(stu, `Student #${stuId} ${stuName} must exist in 5B roster`);
+    const loaded = await api.loadScorePack('exam_1113_t2', { classID: '5B', studentID: stu.id, name: stu.name });
+    assert.strictEqual(loaded.ok, true);
+    assert.strictEqual(loaded.found, true, `5B #${stuId} ${stuName} must be found in exam_1113_t2`);
+    assert.strictEqual(loaded.score, expectedScore, `5B #${stuId} ${stuName} score must be ${expectedScore}`);
+    assert.strictEqual(loaded.capScore, 120);
+    assert.strictEqual(loaded.maxCorrectionBonus, 5);
+  }
+  const bonusRules5B = registry.getBonusRulesForClass('5B');
+  const majorRule5B = bonusRules5B.find(r => r.targetScorePackId === 'exam_1113_t2');
+  assert.ok(majorRule5B && majorRule5B.bonusMode === 'correction' && majorRule5B.maxCorrectionBonus === 5 && majorRule5B.capScore === 120, '5B must have correction bonus rule for exam_1113_t2');
+
   // Correction bonus calculation (max +5, 120 cap, independent of 60 quiz cap)
   const calc89Plus5 = bonus.calculateMajorExamFinalScore({ rawScore: 89, correctionBonus: 5 });
   assert.strictEqual(calc89Plus5.finalScore, 94, '89 + 5 = 94 (must NOT be capped at 60)');
+  const calc111Plus5 = bonus.calculateMajorExamFinalScore({ rawScore: 111, correctionBonus: 5 });
+  assert.strictEqual(calc111Plus5.finalScore, 116, '5B 111 + 5 = 116 (<= 120 cap)');
   const calcClamp5 = bonus.calculateQuizFinalScore({
     rawScore: 74,
     correctionBonus: 9,
@@ -322,11 +356,14 @@ async function runAllTests() {
   assert.strictEqual(calcNeg.correctionBonus, 0);
   assert.strictEqual(calcNeg.finalScore, 14);
 
-  // Correction bonus override via storage
-  storage.setItem('MP_V2_CORRECTION_BONUSES', { 'exam_1113_t2:4D_11': 4 });
+  // Correction bonus override via storage (4D & 5B)
+  storage.setItem('MP_V2_CORRECTION_BONUSES', { 'exam_1113_t2:4D_11': 4, 'exam_1113_t2:5B_10': 5 });
   const loadedZzl = await api.loadScorePack('exam_1113_t2', { classID: '4D', studentID: 11, name: '周梓霖' });
   assert.strictEqual(loadedZzl.score, 14);
   assert.strictEqual(loadedZzl.correctionBonus, 4);
+  const loaded5B10 = await api.loadScorePack('exam_1113_t2', { classID: '5B', studentID: 10, name: '高尚禮' });
+  assert.strictEqual(loaded5B10.score, 111);
+  assert.strictEqual(loaded5B10.correctionBonus, 5);
   storage.setItem('MP_V2_CORRECTION_BONUSES', {});
 
   // UI & privacy assertions for app.html and teacher.html
@@ -335,7 +372,7 @@ async function runAllTests() {
   assert.ok(teacherHtml.includes('js/exam_1113_scores.js'), 'teacher.html must load js/exam_1113_scores.js');
   assert.ok(appHtml.includes('大測訂正加分（最多加${maxCorrectionBonus}分）'), 'app.html A6 must show 大測訂正加分（最多加5分）');
   assert.ok(appHtml.includes('刷題最高分 (>80加分)'), 'app.html A6 must retain 刷題最高分 (>80加分) for regular quizzes');
-  assert.ok(!appHtml.includes('洪佳佳') && !appHtml.includes('周梓霖'), 'app.html must not embed student real names in HTML');
+  assert.ok(!appHtml.includes('洪佳佳') && !appHtml.includes('周梓霖') && !appHtml.includes('高尚禮') && !appHtml.includes('柯鈺鑫'), 'app.html must not embed student real names in HTML');
   assert.ok(appHtml.includes('formatLeaderboardName({ classID: s.classID, studentID: s.id, name: s.name }, displayMode, idx)'), 'app.html must pass (student, displayMode, idx) in correct order');
   assert.strictEqual(ui.formatLeaderboardName({ classID: '4D', studentID: 11, name: '周梓霖' }, 'nickname', 0), '周*霖');
   assert.strictEqual(ui.formatLeaderboardName({ classID: '4D', studentID: 11, name: '周梓霖' }, 'seat_only', 0), '4D #11');
@@ -353,6 +390,18 @@ async function runAllTests() {
     top1113.map(e => [e.student.name, e.score]),
     [['洪佳佳', 89], ['翁淮洋', 74], ['余浩賢', 70], ['施舒晨', 70]],
     'exam_1113_t2 leaderboard must only include >= 70 scores and exclude < 70 (69, 68, etc.)'
+  );
+  const ranked5B1113 = exam1113.getAllExam1113Records('5B')
+    .map(r => ({ student: { classID: r.classID, id: r.studentID, name: r.name }, score: r.score }))
+    .sort((a, b) => (b.score - a.score) || (Number(a.student.id) - Number(b.student.id)));
+  const top5B1113 = ui.buildLeaderboardEntries(ranked5B1113, { minScore: packs5B[0].leaderboardMinScore, limit: 10 });
+  assert.deepStrictEqual(
+    top5B1113.map(e => [e.student.name, e.score]),
+    [
+      ['高尚禮', 111], ['梁泳心', 101], ['陳柏琳', 93], ['姚皓然', 90], ['陳施攸', 90],
+      ['林煜皓', 82], ['洪泳棋', 82], ['黃卓琳', 82], ['李潤歌', 79], ['葉棨釗', 75]
+    ],
+    '5B exam_1113_t2 leaderboard must include top 10 >= 70 scores in rank order and exclude < 70'
   );
   // Top 10 cap when >10 students score >= 70
   const twelveAbove70 = Array.from({ length: 12 }, (_, i) => ({ student: { id: i + 1 }, score: 95 - i }));
