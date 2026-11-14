@@ -755,12 +755,19 @@
       } catch (e) {}
     },
 
-    /** Fetch all GAME rows from the Sheet, cache per game, return merged top10 for gameId. */
+    _pushedBoardKeys: {},
+
+    _entryKey: function (r) {
+      return String(r.classID || '').toUpperCase() + '_' + r.studentID + '_' + Number(r.score || 0) + '_' + Number(r.ts || 0);
+    },
+
+    /** Fetch all GAME rows from the Sheet, cache per game, backfill any local/offline entries missing in cloud, and return merged top10. */
     syncRemoteBoard: function (gameId) {
       const self = this;
       return this._fetchSheetRows()
         .then(function (rows) {
           const byGame = {};
+          const remoteKeys = {};
           rows.forEach(function (r) {
             const did = String((r && r.dateID) || '');
             if (did.indexOf('GAME|') !== 0) return;
@@ -774,7 +781,7 @@
             const cid = String(r.classID || '').trim().toUpperCase();
             const stuId = String(r.studentID || '').trim();
             if (!gid || !cid || !stuId) return;
-            (byGame[gid] = byGame[gid] || []).push({
+            const item = {
               sid: cid + '_' + stuId,
               classID: cid,
               studentID: isNaN(Number(stuId)) ? stuId : Number(stuId),
@@ -784,10 +791,25 @@
               durationMs: Number(kv.D || 0),
               ts: Number(kv.T || 0),
               remote: true,
-            });
+            };
+            remoteKeys[gid + '|' + self._entryKey(item)] = true;
+            (byGame[gid] = byGame[gid] || []).push(item);
           });
           Object.keys(byGame).forEach(function (gid) {
             setLocalJson(self._remoteBoardKey(gid), self._mergeBoards(byGame[gid], []));
+          });
+          // Backfill local/offline leaderboard entries that are not yet in the cloud Sheet
+          const gidsToCheck = ['trig-ratio', 'bash-nim', 'ring-nim'];
+          if (gameId && gidsToCheck.indexOf(gameId) === -1) gidsToCheck.push(gameId);
+          gidsToCheck.forEach(function (gid) {
+            const localList = getLocalJson(self._boardKey(gid), []);
+            (localList || []).forEach(function (r) {
+              if (!r || Number(r.score || 0) <= 0 || !r.classID) return;
+              const fullKey = gid + '|' + self._entryKey(r);
+              if (remoteKeys[fullKey] || self._pushedBoardKeys[fullKey]) return;
+              self._pushedBoardKeys[fullKey] = true;
+              self._postRemote(Object.assign({ gameId: gid }, r));
+            });
           });
           return self.getTop10(gameId);
         })
