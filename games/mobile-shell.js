@@ -10,6 +10,10 @@
   const LOBBY_URL = '../app.html?screen=games';
   const POINTS_URL = '../app.html?screen=points';
   const MUTE_KEY = 'MP_V2_GAME_MUTED';
+  // Fallback daily limit used when GameBridge (bonus.js) is not yet available
+  const FALLBACK_LIMIT_MS = 30 * 60 * 1000;
+  const WARN_THRESHOLD_MS = 5 * 60 * 1000;
+  const LOCAL_TIME_KEY_PREFIX = 'MP_V2_GAME_TIME_LOCAL_';
 
   let opts = {};
   let student = null;
@@ -57,6 +61,54 @@
 
   function bridge() {
     return (root.MathCoreBonus && root.MathCoreBonus.GameBridge) || root.GameBridge || null;
+  }
+
+  // ── Local-fallback timer (used when bonus.js / GameBridge not yet loaded) ──
+  // Reads/writes to localStorage so it survives page navigations and stays in
+  // sync with the same key structure bonus.js uses once it loads.
+  function _localTimeKey() {
+    try {
+      const now = new Date(Date.now() + 8 * 3600000); // UTC+8 (Macau)
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      return LOCAL_TIME_KEY_PREFIX + String(sid || 'GUEST').toUpperCase() + '_' + dateStr;
+    } catch (e) {
+      return LOCAL_TIME_KEY_PREFIX + String(sid || 'GUEST').toUpperCase();
+    }
+  }
+
+  function _localGetRec() {
+    try {
+      const raw = root.localStorage && root.localStorage.getItem(_localTimeKey());
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { usedMs: 0 };
+  }
+
+  function _localSaveRec(rec) {
+    try {
+      if (root.localStorage) root.localStorage.setItem(_localTimeKey(), JSON.stringify(rec));
+    } catch (e) {}
+  }
+
+  function _localStatus() {
+    const rec = _localGetRec();
+    const usedMs = rec.usedMs || 0;
+    const remainingMs = Math.max(0, FALLBACK_LIMIT_MS - usedMs);
+    return {
+      sid: sid,
+      usedMs: usedMs,
+      totalAllowedMs: FALLBACK_LIMIT_MS,
+      remainingMs: remainingMs,
+      warn: remainingMs > 0 && remainingMs <= WARN_THRESHOLD_MS,
+      locked: remainingMs <= 0,
+    };
+  }
+
+  function _localTick(addMs) {
+    const rec = _localGetRec();
+    rec.usedMs = Math.max(0, (rec.usedMs || 0) + Math.max(0, Number(addMs || 0)));
+    _localSaveRec(rec);
+    return _localStatus();
   }
 
   function mmss(ms) {
@@ -265,7 +317,8 @@
 
   function status() {
     const b = bridge();
-    return b ? b.getPlaytimeStatus(sid) : { remainingMs: 0, locked: true, warn: false };
+    // Fall back to local timer if GameBridge (bonus.js) hasn't loaded yet.
+    return b ? b.getPlaytimeStatus(sid) : _localStatus();
   }
 
   function updateHud(st) {
@@ -327,10 +380,11 @@
     lastTick = now;
     if (locked) return;
     let st;
+    const b = bridge();
     if (gameActive && doc.visibilityState !== 'hidden') {
-      st = bridge().recordPlayDuration(sid, delta);
+      st = b ? b.recordPlayDuration(sid, delta) : _localTick(delta);
     } else {
-      st = status();
+      st = b ? b.getPlaytimeStatus(sid) : _localStatus();
     }
     updateHud(st);
     try { if (typeof opts.onTick === 'function') opts.onTick(st); } catch (e) {}
