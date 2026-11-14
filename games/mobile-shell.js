@@ -16,11 +16,44 @@
   let sid = null;
   let timerId = null;
   let lastTick = 0;
-  let gameActive = true;
+  let gameActive = false;
   let warnShown = false;
   let locked = false;
   let muted = false;
   let leaving = false;
+  const pendingSyncOps = new Set();
+
+  function trackSyncPromise(p) {
+    if (p && typeof p.then === 'function') {
+      const cleanup = function () { pendingSyncOps.delete(tracked); };
+      const tracked = Promise.resolve(p).then(cleanup, cleanup);
+      pendingSyncOps.add(tracked);
+    }
+    return p;
+  }
+
+  function wrapSyncMethods() {
+    const sync = root.MathCoreSync;
+    if (!sync || sync.__mgsTracked) return;
+    sync.__mgsTracked = true;
+    ['recordAction', 'recordEvent'].forEach(function (name) {
+      if (typeof sync[name] === 'function') {
+        const orig = sync[name];
+        sync[name] = function () {
+          return trackSyncPromise(orig.apply(this, arguments));
+        };
+      }
+    });
+  }
+
+  function settlePendingSync(maxWaitMs) {
+    if (pendingSyncOps.size === 0) return Promise.resolve();
+    const waitMs = Math.max(50, Number(maxWaitMs || 800));
+    const opsList = Array.from(pendingSyncOps);
+    const ops = typeof Promise.allSettled === 'function' ? Promise.allSettled(opsList) : Promise.all(opsList);
+    const timer = new Promise(function (r) { setTimeout(r, waitMs); });
+    return Promise.race([ops, timer]);
+  }
 
   function bridge() {
     return (root.MathCoreBonus && root.MathCoreBonus.GameBridge) || root.GameBridge || null;
@@ -101,6 +134,20 @@
       '<a id="mgs-lock-points" href="' + POINTS_URL + '">💎 用積分加時</a>' +
       '<a id="mgs-lock-lobby" class="mgs-secondary" href="' + LOBBY_URL + '">🏠 返回遊戲大廳</a>';
     doc.body.appendChild(o);
+    const ptsLink = doc.getElementById('mgs-lock-points');
+    if (ptsLink) {
+      ptsLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        leave(POINTS_URL);
+      });
+    }
+    const lobbyLink = doc.getElementById('mgs-lock-lobby');
+    if (lobbyLink) {
+      lobbyLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        leave(LOBBY_URL);
+      });
+    }
     updateHud(status());
   }
 
@@ -143,7 +190,9 @@
     if (doc.visibilityState === 'hidden') {
       stopTimer(true);
       try { if (typeof opts.onVisibilityPause === 'function') opts.onVisibilityPause(true); } catch (e) {}
-      flushSync(true);
+      settlePendingSync(300).then(function () {
+        flushSync(true);
+      });
     } else if (!locked && !leaving) {
       startTimer();
       try { if (typeof opts.onVisibilityPause === 'function') opts.onVisibilityPause(false); } catch (e) {}
@@ -164,7 +213,10 @@
     leaving = true;
     stopTimer(true);
     const timeout = new Promise(function (r) { setTimeout(r, 1500); });
-    Promise.race([flushSync(false), timeout]).then(function () {
+    const settleAndFlush = settlePendingSync(700).then(function () {
+      return flushSync(false);
+    });
+    Promise.race([settleAndFlush, timeout]).then(function () {
       root.location.href = url;
     });
   }
@@ -209,6 +261,7 @@
       } catch (e) {}
       try {
         if (root.MathCoreSync) {
+          wrapSyncMethods();
           root.MathCoreSync.start();
           if (typeof root.MathCoreSync.setDefaultContext === 'function') {
             root.MathCoreSync.setDefaultContext({ sid: sid, classID: sess.classID, studentID: sess.studentID, mode: 'game', signingKey: sess.signingKey || sess.token });
@@ -226,7 +279,14 @@
       if (st.warn) showWarn();
       startTimer();
       doc.addEventListener('visibilitychange', onVisibility);
-      root.addEventListener('pagehide', function () { stopTimer(true); flushSync(true); });
+      root.addEventListener('pagehide', function () {
+        stopTimer(true);
+        if (pendingSyncOps.size > 0) {
+          settlePendingSync(200).then(function () { flushSync(true); });
+        } else {
+          flushSync(true);
+        }
+      });
       return true;
     },
     getStudent: function () { return student; },
@@ -234,14 +294,22 @@
     isLocked: function () { return locked; },
     isMuted: function () { return muted; },
     setGameActive: function (on) {
-      if (lastTick && gameActive && !on) {
+      const next = !!on;
+      if (next === gameActive) return;
+      if (lastTick && gameActive && !next) {
         stopTimer(true);
         gameActive = false;
-        startTimer();
+        if (!locked && !leaving) startTimer();
         return;
       }
-      gameActive = !!on;
+      gameActive = next;
+      if (next && !locked && !leaving) {
+        lastTick = Date.now();
+        if (!timerId) startTimer();
+      }
     },
+    settlePendingSync: settlePendingSync,
+    escapeHtml: esc,
     reportRound: function (p) {
       const b = bridge();
       if (!b || !student || locked) return null;

@@ -32,6 +32,12 @@
     .modal-backdrop-custom { position: fixed; inset: 0; background: rgba(15,23,42,0.65); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-backdrop-custom.show { display: flex; }
     .modal-card { background: #fff; border-radius: 16px; max-width: 540px; width: 100%; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
+    .mp-toast-container { position: fixed; top: 64px; right: 16px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+    .mp-toast { padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #fff; background: #1e293b; box-shadow: 0 8px 24px rgba(15,23,42,0.28); border-left: 4px solid #38bdf8; }
+    .mp-toast-warning { background: #fef3c7; color: #78350f; border-left-color: #f59e0b; }
+    .mp-toast-info { background: #eff6ff; color: #1e3a8a; border-left-color: #2563eb; }
+    .mp-toast-error { background: #fee2e2; color: #7f1d1d; border-left-color: #ef4444; }
+    .mp-toast-success { background: #dcfce7; color: #14532d; border-left-color: #22c55e; }
   </style>
 </head>
 <body>
@@ -561,10 +567,33 @@
 
         window.addEventListener('message', function (ev) {
           if (ev.data && ev.data.type === 'MATH_GAME_REPORT') {
+            // Desktop/iPad iframe games load only config.js + bonus.js (no sync.js), so the parent
+            // queues the signed game_finish event once, on behalf of the embedded game.
+            const frame = document.getElementById('gameIframe');
+            const fromOurIframe = frame && ev.source === frame.contentWindow;
+            if (fromOurIframe && currentStudent && window.MathCoreSync && typeof MathCoreSync.recordAction === 'function') {
+              const sid = currentStudent.classID + '_' + currentStudent.studentID;
+              if (!ev.data.sid || ev.data.sid === sid) {
+                const syncOps = [];
+                if (ev.data.pointsEntry && typeof ev.data.pointsEntry === 'object') {
+                  syncOps.push(MathCoreSync.recordAction('points_earn', ev.data.pointsEntry, { sid: sid }));
+                }
+                syncOps.push(MathCoreSync.recordAction('game_finish', {
+                  gameId: String(ev.data.gameId || ''),
+                  score: Number(ev.data.score || 0),
+                  win: !!ev.data.win,
+                  durationMs: Number(ev.data.durationMs || 0),
+                  inTop10: !!ev.data.inTop10,
+                  via: 'iframe'
+                }, { sid: sid, classID: currentStudent.classID, studentID: currentStudent.studentID }));
+                Promise.all(syncOps).then(refreshTopBadges, function () {});
+              }
+            }
             refreshTopBadges();
             renderGamesLeaderboard(ev.data.gameId);
           }
         });
+        window.addEventListener('pagehide', function () { stopGamePlaytimeTracker(); });
 
         // Restore active login session if present and valid student/teacher_test session
         let restored = false;
@@ -1201,7 +1230,7 @@
       }
 
       function logout() {
-        stopGamePlaytimeTracker();
+        teardownGameIframe();
         stopGateCamera();
         gateCapturedSnap = null;
         gateCloseCandidates = [];
@@ -1298,7 +1327,7 @@
 
       function showScreen(id) {
         if (id !== 'screen-games') {
-          stopGamePlaytimeTracker();
+          teardownGameIframe();
         }
         document.querySelectorAll('.app-screen').forEach(el => el.classList.remove('active'));
         const target = document.getElementById(id);
@@ -2248,6 +2277,7 @@
 
       function openGamesApp() {
         if (!currentStudent) return;
+        teardownGameIframe();
         const st = updateGamePlaytimeBadge() || { locked: false };
         const regGames = (window.MathPlatformRegistry && MathPlatformRegistry.games) || [];
         const cfgGames = (window.MathCoreConfig && MathCoreConfig.games && MathCoreConfig.games.catalog) || [];
@@ -2329,12 +2359,18 @@
         }, 1000);
       }
 
-      function closeGameIframe() {
+      function teardownGameIframe() {
         stopGamePlaytimeTracker();
-        document.getElementById('gameIframe').src = 'about:blank';
-        document.getElementById('gameIframeWrap').classList.add('d-none');
+        const frame = document.getElementById('gameIframe');
+        if (frame && frame.getAttribute('src') !== 'about:blank') frame.src = 'about:blank';
+        const wrap = document.getElementById('gameIframeWrap');
+        if (wrap) wrap.classList.add('d-none');
         const warnEl = document.getElementById('gameIframeWarn');
         if (warnEl) warnEl.classList.add('d-none');
+      }
+
+      function closeGameIframe() {
+        teardownGameIframe();
         openGamesApp();
       }
 

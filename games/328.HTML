@@ -221,7 +221,7 @@
     </div>
 </div>
 
-<button id="fullscreen-toggle" class="fullscreen-btn hidden" onclick="toggleFullScreen()">退出全屏 ⛶</button>
+<button id="fullscreen-toggle" class="fullscreen-btn hidden" onclick="toggleFullScreen()">進入全屏 ⛶</button>
 
 <script>
     const SoundManager = {
@@ -255,11 +255,12 @@
             osc.connect(g); this._connectToSFX(g, pan); osc.start(t); osc.stop(t + 0.08);
         },
         startBGM() {
+            if (document.visibilityState === 'hidden') return;
             this.init(); if (!this.ctx || this._bgmTimer != null) return;
             const self = this; const ac = this.ctx; const chords = [[130.81, 164.81, 196.0], [116.54, 146.83, 174.61], [98.0, 123.47, 146.83], [110.0, 138.59, 164.81]];
             this._bgmBeat = 0;
             this._bgmTimer = setInterval(function () {
-                if (gameState === 'GAMEOVER') { self.stopBGM(); return; }
+                if (gameState === 'GAMEOVER' || gameState === 'MENU' || document.visibilityState === 'hidden') { self.stopBGM(); return; }
                 const t = ac.currentTime; const beat = self._bgmBeat++; const chord = chords[Math.floor(beat / 8) % chords.length];
                 if (beat % 2 === 0) {
                     const o = ac.createOscillator(); const g = ac.createGain(); const filt = ac.createBiquadFilter();
@@ -337,11 +338,13 @@
             };
         } else {
             let otherX;
-            let absAdj = Math.abs(adj);
-            if (Math.random() > 0.5 || absAdj <= 3) {
-                otherX = -dir * (Math.random() * 1.5 + 0.5) * opp; 
+            const absAdj = Math.abs(adj);
+            const minGap = Math.max(2.2, opp * 0.55, absAdj * 0.28);
+            const maxFromRef = absAdj - Math.max(2, absAdj * 0.25);
+            if (Math.random() > 0.5 || maxFromRef <= minGap) {
+                otherX = -dir * (minGap + Math.random() * Math.max(opp, absAdj * 0.5));
             } else {
-                otherX = dir * (Math.random() * (absAdj - 2) + 1); 
+                otherX = dir * (minGap + Math.random() * (maxFromRef - minGap));
             }
             return {
                 type: "hard",
@@ -353,9 +356,36 @@
     }
 
     const stepNames = { "opp": "对边", "adj": "邻边", "hyp": "斜边" };
-    let gameState = "MENU", gameMode = "30s", currentPlayer = "神秘挑战者", score = 0, combo = 0, wrongCombo = 0, timeLeft = 30.0, timerInterval, currentMission = null;
+    let gameState = "MENU", gameMode = "30s", currentPlayer = "神秘挑战者", score = 0, combo = 0, wrongCombo = 0, timeLeft = 30.0, timerInterval = null, currentMission = null;
     let numFilled = false, denFilled = false, ctx, canvas, pCtx, pCanvas, rCtx, rCanvas, currentLevel = 1, flashEdge = null;
     let isDragging = false, drawStartX = 0, drawStartY = 0, mouseX = 0, mouseY = 0, pointerDownTime = 0, pointerDownPos = {x:0, y:0}, ripples = [], particles = [], lastAuxLineSoundAt = 0, lastPointerClientX = 0, lastCountdownBeepSecond = -1;
+    let roundId = 0, animLoopsStarted = false, flashRafId = null;
+    const pendingTimeouts = new Set();
+
+    function scheduleTimeout(fn, delay) {
+        const expectedRound = roundId;
+        const id = setTimeout(() => {
+            pendingTimeouts.delete(id);
+            if (roundId !== expectedRound) return;
+            fn();
+        }, delay);
+        pendingTimeouts.add(id);
+        return id;
+    }
+
+    function clearAllTimers() {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        pendingTimeouts.forEach(id => clearTimeout(id));
+        pendingTimeouts.clear();
+        if (flashRafId != null) { cancelAnimationFrame(flashRafId); flashRafId = null; }
+    }
+
+    function ensureAnimLoops() {
+        if (animLoopsStarted) return;
+        animLoopsStarted = true;
+        requestAnimationFrame(animateParticles);
+        requestAnimationFrame(animateRipples);
+    }
 
     function setLayout(mode) {
         const wrapper = document.getElementById('main-wrapper');
@@ -383,8 +413,15 @@
     function enterFullScreen() { try { const elem = document.documentElement; if (elem.requestFullscreen) { let p = elem.requestFullscreen(); if(p) p.catch(()=>{}); } else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen(); } catch (e) {} }
     function exitFullScreen() { try { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {} }
     function toggleFullScreen() { if (!document.fullscreenElement && !document.webkitFullscreenElement) enterFullScreen(); else exitFullScreen(); }
-    function handleFullscreenChange() { const btn = document.getElementById('fullscreen-toggle'); if (!btn) return; if (!document.fullscreenElement && !document.webkitFullscreenElement) btn.innerText = "进入全屏 ⛶"; else btn.innerText = "退出全屏 ⛶"; }
+    function handleFullscreenChange() { const btn = document.getElementById('fullscreen-toggle'); if (!btn) return; if (!document.fullscreenElement && !document.webkitFullscreenElement) btn.innerText = "進入全屏 ⛶"; else btn.innerText = "退出全屏 ⛶"; }
     document.addEventListener('fullscreenchange', handleFullscreenChange); document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            try { SoundManager.stopBGM(); } catch (e) {}
+        } else if (gameState === "SELECTION_PHASE" || gameState === "DRAWING_PHASE" || gameState === "SUCCESS") {
+            try { SoundManager.startBGM(); } catch (e) {}
+        }
+    });
 
     function initSystem() {
         canvas = document.getElementById('main-canvas'); ctx = canvas.getContext('2d'); pCanvas = document.getElementById('particle-canvas'); pCtx = pCanvas.getContext('2d'); rCanvas = document.getElementById('ripple-canvas'); rCtx = rCanvas.getContext('2d');
@@ -407,10 +444,13 @@
         const pane = document.getElementById('geometry-pane'); if(!pane) return;
         let cw = pane.clientWidth; let ch = pane.clientHeight; if (cw === 0 || ch === 0) return;
         canvas.width = cw; canvas.height = ch; pCanvas.width = cw; pCanvas.height = ch; rCanvas.width = cw; rCanvas.height = ch;
-        if(gameState === "SELECTION_PHASE" || gameState === "DRAWING_PHASE") drawGeometry();
+        if(gameState === "SELECTION_PHASE" || gameState === "DRAWING_PHASE" || gameState === "SUCCESS") drawGeometry();
     }
 
     function startGame(mode = '30s') {
+        roundId++;
+        clearAllTimers();
+        particles.length = 0; ripples.length = 0; flashEdge = null; isDragging = false;
         try { SoundManager.init(); SoundManager.play('start'); SoundManager.startBGM(); } catch (e) { console.warn("Audio playback issue:", e); }
         gameMode = mode; enterFullScreen(); 
         document.getElementById('fullscreen-toggle').classList.remove('hidden'); document.getElementById('btn-return').classList.remove('hidden'); 
@@ -419,9 +459,13 @@
         document.getElementById("start-screen").classList.add("hidden"); document.getElementById("main-wrapper").classList.remove("hidden");
         score = 0; combo = 0; wrongCombo = 0; currentLevel = 1; lastCountdownBeepSecond = -1; timeLeft = gameMode === '30s' ? 30.0 : 0;
         document.getElementById("timer-display").innerText = gameMode === '30s' ? "30.0" : "∞"; document.getElementById("timer-display").classList.remove("timer-warning");
-        setTimeout(() => { adaptCanvas(); nextMission(); requestAnimationFrame(animateParticles); requestAnimationFrame(animateRipples); updateUI(); }, 50);
-        clearInterval(timerInterval);
+        gameState = "PLAYING";
+        adaptCanvas(); nextMission(); ensureAnimLoops(); updateUI();
+        scheduleTimeout(() => { adaptCanvas(); }, 50);
+        const myRound = roundId;
         timerInterval = setInterval(() => {
+            if (roundId !== myRound) return;
+            if (document.visibilityState === 'hidden') return;
             if(gameState !== "PLAYING" && gameState !== "DRAWING_PHASE" && gameState !== "SELECTION_PHASE") return;
             if (gameMode === '30s') {
                 timeLeft -= 0.1; const timerEl = document.getElementById("timer-display"); timerEl.innerText = Math.max(0, timeLeft).toFixed(1);
@@ -434,7 +478,10 @@
     }
 
     function returnToMenu() {
-        try { SoundManager.stopBGM(); } catch(e) {} clearInterval(timerInterval); gameState = "MENU";
+        roundId++;
+        clearAllTimers();
+        particles.length = 0; ripples.length = 0; flashEdge = null; isDragging = false;
+        try { SoundManager.stopBGM(); } catch(e) {} gameState = "MENU";
         document.getElementById("main-wrapper").classList.add("hidden"); document.getElementById("start-screen").classList.remove("hidden");
         document.getElementById("btn-return").classList.add("hidden"); document.getElementById('fullscreen-toggle').classList.add('hidden');
         if (document.fullscreenElement || document.webkitFullscreenElement) { exitFullScreen(); }
@@ -568,29 +615,31 @@
         if (currentMission.type === "hard") {
             if (data.ref.pt[0] * data.other.pt[0] > 0) { ctx.strokeStyle = "rgba(148, 163, 184, 0.5)"; ctx.lineWidth = Math.max(2, canvas.width * 0.006); ctx.setLineDash([8, 8]); ctx.beginPath(); ctx.moveTo(pD.x, pD.y); const innerPoint = Math.abs(data.ref.pt[0]) < Math.abs(data.other.pt[0]) ? pRef : pOther; ctx.lineTo(innerPoint.x, innerPoint.y); ctx.stroke(); ctx.setLineDash([]); }
             if (gameState === "DRAWING_PHASE") { ctx.beginPath(); ctx.arc(pA.x, pA.y, rightAngleSize*1.5, 0, Math.PI*2); ctx.fillStyle = "rgba(250, 204, 21, 0.3)"; ctx.fill(); ctx.lineWidth = Math.max(2, canvas.width * 0.006); ctx.strokeStyle = "#FACC15"; ctx.stroke(); } 
-            else if (gameState === "SELECTION_PHASE") { ctx.strokeStyle = "#10B981"; ctx.lineWidth = Math.max(4, canvas.width * 0.008); ctx.setLineDash([10, 10]); ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pD.x, pD.y); ctx.stroke(); ctx.setLineDash([]); drawRightAngle(ctx, pD, pRef, pA, rightAngleSize); }
-        } else if (currentMission.type === "easy" && gameState === "SELECTION_PHASE") { drawRightAngle(ctx, pD, pRef, pA, rightAngleSize); }
+            else if (gameState === "SELECTION_PHASE" || gameState === "SUCCESS") { ctx.strokeStyle = "#10B981"; ctx.lineWidth = Math.max(4, canvas.width * 0.008); ctx.setLineDash([10, 10]); ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pD.x, pD.y); ctx.stroke(); ctx.setLineDash([]); drawRightAngle(ctx, pD, pRef, pA, rightAngleSize); }
+        } else if (currentMission.type === "easy" && (gameState === "SELECTION_PHASE" || gameState === "SUCCESS")) { drawRightAngle(ctx, pD, pRef, pA, rightAngleSize); }
 
-        if (gameState === "SELECTION_PHASE") {
+        if (gameState === "SELECTION_PHASE" || gameState === "SUCCESS") {
             const refColorRgb = varToRgb("--accent"); ctx.strokeStyle = `rgba(${refColorRgb}, 1)`; ctx.fillStyle = `rgba(${refColorRgb}, 0.2)`; ctx.lineWidth = Math.max(3, canvas.width * 0.006);
             const d1 = Math.hypot(pA.x - pRef.x, pA.y - pRef.y); const d2 = Math.hypot(pD.x - pRef.x, pD.y - pRef.y); const arcR = Math.max(12, Math.min(35, Math.min(d1, d2) * 0.35)); 
             const angA = Math.atan2(pA.y - pRef.y, pA.x - pRef.x); const angD = Math.atan2(pD.y - pRef.y, pD.x - pRef.x);
-            ctx.beginPath(); ctx.moveTo(pRef.x, pRef.y); ctx.arc(pRef.x, pRef.y, arcR, Math.min(angA, angD), Math.max(angA, angD)); ctx.closePath(); ctx.fill(); ctx.stroke();
+            const delta = Math.atan2(Math.sin(angA - angD), Math.cos(angA - angD));
+            ctx.beginPath(); ctx.moveTo(pRef.x, pRef.y); ctx.arc(pRef.x, pRef.y, arcR, angD, angD + delta, delta < 0); ctx.closePath(); ctx.fill(); ctx.stroke();
         }
 
         const labelOffset = Math.max(20, scale * 0.2); 
         drawVertexLabelSmart(ctx, pA, data.top.name, cx, cy, labelOffset, "148, 163, 184"); drawVertexLabelSmart(ctx, pRef, data.ref.name, cx, cy, labelOffset, "148, 163, 184"); if(pOther) drawVertexLabelSmart(ctx, pOther, data.other.name, cx, cy, labelOffset, "148, 163, 184");
-        
-        if(gameState === "SELECTION_PHASE") {
+        if (currentMission.type === "easy") { drawVertexLabelSmart(ctx, pD, data.foot.name, cx, cy, labelOffset, "148, 163, 184"); }
+
+        if(gameState === "SELECTION_PHASE" || gameState === "SUCCESS") {
             if(currentMission.type === "hard") drawVertexLabelSmart(ctx, pD, "D", cx, cy, labelOffset*0.8, varToRgb("--success"));
             drawEdgeLabel(ctx, pA, pD, currentMission.data.opp); drawEdgeLabel(ctx, pD, pRef, currentMission.data.adj); drawEdgeLabel(ctx, pA, pRef, currentMission.data.hyp);
-        } else if (currentMission.type === "easy") { drawVertexLabelSmart(ctx, pD, data.foot.name, cx, cy, labelOffset, "148, 163, 184"); }
+        }
 
         if(flashEdge) {
             let p1, p2; if(flashEdge.id === "opp") { p1 = pA; p2 = pD; } else if(flashEdge.id === "adj") { p1 = pD; p2 = pRef; } else { p1 = pA; p2 = pRef; }
             ctx.strokeStyle = flashEdge.color; ctx.lineWidth = Math.max(6, canvas.width * 0.015); ctx.shadowColor = flashEdge.color; ctx.shadowBlur = Math.max(15, canvas.width * 0.03);
             ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); ctx.shadowBlur = 0;
-            if(Date.now() > flashEdge.timer) { flashEdge = null; drawGeometry(); } else { requestAnimationFrame(drawGeometry); }
+            if(Date.now() > flashEdge.timer) { flashEdge = null; flashRafId = null; drawGeometry(); } else { if (flashRafId != null) cancelAnimationFrame(flashRafId); flashRafId = requestAnimationFrame(drawGeometry); }
         }
     }
 
@@ -626,17 +675,17 @@
         const penaltyEl = document.getElementById("penalty-display"); if(wrongCombo > 0) { let pVal = 100 * Math.pow(2, wrongCombo - 1); penaltyEl.innerText = `连错惩罚: -${pVal}`; penaltyEl.classList.add("show"); penaltyEl.style.color = "var(--danger)"; } else { penaltyEl.classList.remove("show"); }
     }
 
-    function handlePenalty() { try { SoundManager.play('wrong', lastPointerClientX); } catch(e){} wrongCombo++; combo = 0; currentLevel = 1; let penalty = 100 * Math.pow(2, wrongCombo - 1); score = Math.max(0, score - penalty); updateUI(); const geometryPane = document.getElementById("geometry-pane"); geometryPane.classList.add("main-error"); setTimeout(() => geometryPane.classList.remove("main-error"), 400); if(gameState === "DRAWING_PHASE") setTimeout(() => { if (gameState !== "GAMEOVER") nextMission(); }, 500); }
+    function handlePenalty() { try { SoundManager.play('wrong', lastPointerClientX); } catch(e){} wrongCombo++; combo = 0; currentLevel = 1; let penalty = 100 * Math.pow(2, wrongCombo - 1); score = Math.max(0, score - penalty); updateUI(); const geometryPane = document.getElementById("geometry-pane"); geometryPane.classList.add("main-error"); scheduleTimeout(() => geometryPane.classList.remove("main-error"), 400); if(gameState === "DRAWING_PHASE") scheduleTimeout(() => { if (gameState === "DRAWING_PHASE") nextMission(); }, 500); }
 
     function nextMission() {
-        if (gameState === "GAMEOVER") return;
+        if (gameState === "GAMEOVER" || gameState === "MENU") return;
         try {
             if (combo >= 6 && currentLevel < 3) {
                 currentLevel = 3; try{ SoundManager.play('levelUp'); }catch(e){}
-                const banner = document.getElementById("level-up-banner"); banner.innerText = "🌀 终极挑战：全向空间建构！"; banner.classList.add("show"); setTimeout(()=> banner.classList.remove("show"), 1500);
+                const banner = document.getElementById("level-up-banner"); banner.innerText = "🌀 终极挑战：全向空间建构！"; banner.classList.add("show"); scheduleTimeout(()=> banner.classList.remove("show"), 1500);
             } else if (combo >= 3 && combo < 6 && currentLevel < 2) {
                 currentLevel = 2; try{ SoundManager.play('levelUp'); }catch(e){}
-                const banner = document.getElementById("level-up-banner"); banner.innerText = "🚀 难度升级：画出高线！"; banner.classList.add("show"); setTimeout(()=> banner.classList.remove("show"), 1500);
+                const banner = document.getElementById("level-up-banner"); banner.innerText = "🚀 难度升级：画出高线！"; banner.classList.add("show"); scheduleTimeout(()=> banner.classList.remove("show"), 1500);
             }
             
             currentMission = generateMission(currentLevel); 
@@ -651,26 +700,32 @@
     }
 
     function handleEdgeSelection(edgeType) {
+        if (gameState !== "SELECTION_PHASE") return;
         let matched = false, targetSlotId = null, earlyDenominator = false;
         if (!numFilled) { if (edgeType === currentMission.steps.num) { targetSlotId = "numerator-slot"; numFilled = true; matched = true; } else if (edgeType === currentMission.steps.den) earlyDenominator = true; } else if (!denFilled) { if (edgeType === currentMission.steps.den) { targetSlotId = "denominator-slot"; denFilled = true; matched = true; } }
         if (matched) {
             try { SoundManager.play('correct', lastPointerClientX); } catch(e){}
             combo++; wrongCombo = 0; score += 100 * combo; fillSlot(targetSlotId, currentMission.data[edgeType]); flashEdge = { id: edgeType, color: "#10B981", timer: Date.now() + 300 }; drawGeometry();
             const paneRect = document.getElementById("geometry-pane").getBoundingClientRect(); createExplosion(paneRect.width/2, paneRect.height/2); showFloatingText(combo > 3 ? "GODLIKE!" : "NICE!", "#10B981");
-            if (numFilled && denFilled) { try { SoundManager.play('success', lastPointerClientX); } catch(e){} gameState = "SUCCESS"; document.getElementById("instruction").innerText = "✨ 建构完成！ ✨"; document.getElementById("geometry-pane").classList.add("main-success"); updateUI(); setTimeout(() => { document.getElementById("geometry-pane").classList.remove("main-success"); if (gameState !== "GAMEOVER") nextMission(); }, 700); } else { updateInstruction(); }
+            if (numFilled && denFilled) { try { SoundManager.play('success', lastPointerClientX); } catch(e){} gameState = "SUCCESS"; document.getElementById("instruction").innerText = "✨ 建构完成！ ✨"; document.getElementById("geometry-pane").classList.add("main-success"); updateUI(); scheduleTimeout(() => { document.getElementById("geometry-pane").classList.remove("main-success"); if (gameState === "SUCCESS") nextMission(); }, 700); } else { updateInstruction(); }
             updateUI();
         } else { flashEdge = { id: edgeType, color: "#EF4444", timer: Date.now() + 400 }; drawGeometry(); if (earlyDenominator) showFloatingText("请先寻找分子", "#EF4444"); handlePenalty(); }
     }
 
     function saveAndGetLeaderboard() { let board = []; try { board = JSON.parse(localStorage.getItem('trigClassroomBoard')) || []; if (gameMode !== 'practice') { board.push({ name: currentPlayer, score: score }); board.sort((a, b) => b.score - a.score); board = board.slice(0, 5); localStorage.setItem('trigClassroomBoard', JSON.stringify(board)); } } catch (e) { console.warn("Storage restricted"); } return board; }
 
+    function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
     function endGame() {
-        try { SoundManager.stopBGM(); SoundManager.play('gameover'); } catch(e){} clearInterval(timerInterval); gameState = "GAMEOVER";
+        if (gameState === "GAMEOVER") return;
+        roundId++;
+        clearAllTimers();
+        try { SoundManager.stopBGM(); SoundManager.play('gameover'); } catch(e){} gameState = "GAMEOVER";
         document.getElementById('btn-return').classList.add('hidden');
-        try { if (window.GameBridge) { const stu = window.GameBridge.getCurrentStudent(); if (stu && stu.name) currentPlayer = stu.name; window.GameBridge.report({ gameId: 'trig-ratio', score: score, win: score > 0, durationMs: 30000 }); } } catch(e){}
+        try { if (window.GameBridge) { const stu = window.GameBridge.getCurrentStudent(); if (stu && stu.name) currentPlayer = stu.name; window.GameBridge.report({ gameId: 'trig-ratio', score: score, win: score > 0, durationMs: 30000, skipDurationRecord: window.parent !== window }); } } catch(e){}
 
         const board = saveAndGetLeaderboard(); let boardHTML = `<div class="leaderboard-box"><h2 style="color: var(--accent); font-size: clamp(2rem, 4vw, 3rem); margin-top: 0; margin-bottom: 20px; text-shadow: 0 0 20px var(--accent);">🏆 荣誉殿堂 🏆</h2><table class="leaderboard-table"><tr><th>排名</th><th>玩家</th><th>分数</th></tr>`;
-        board.forEach((entry, idx) => { let rank = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : idx + 1)); let highlight = (entry.name === currentPlayer && entry.score === score) ? 'class="current-player-rank"' : ''; boardHTML += `<tr ${highlight} style="animation: slideInRank 0.5s ease forwards; animation-delay: ${idx * 0.15}s; opacity: 0;"><td>${rank}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`; }); boardHTML += `</table></div>`;
+        board.forEach((entry, idx) => { let rank = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : idx + 1)); let highlight = (entry.name === currentPlayer && entry.score === score) ? 'class="current-player-rank"' : ''; boardHTML += `<tr ${highlight} style="animation: slideInRank 0.5s ease forwards; animation-delay: ${idx * 0.15}s; opacity: 0;"><td>${rank}</td><td>${escHtml(entry.name)}</td><td>${Number(entry.score || 0)}</td></tr>`; }); boardHTML += `</table></div>`;
         const endScreen = document.createElement('div'); endScreen.className = "overlay";
         endScreen.innerHTML = `<h1 style="font-size: clamp(3rem, 6vw, 6rem); margin-bottom: 10px; color: #FACC15; text-shadow: 0 0 50px rgba(250,204,21,0.6);">TIME UP!</h1><div style="font-size: clamp(1.5rem, 3vw, 3rem); margin: 10px 0 30px 0;">最终得分：${score}</div>${boardHTML}<button class="mega-btn" onclick="location.reload()" style="margin-top: 20px;">重新挑战</button>`;
         document.body.appendChild(endScreen); createExplosion(window.innerWidth/2, window.innerHeight/4);
@@ -680,7 +735,7 @@
     function activateSlot(id) { document.getElementById(id).classList.add("active"); }
     function fillSlot(id, text) { const el = document.getElementById(id); el.className = "slot filled"; el.innerText = text; el.classList.remove("active");}
     function updateInstruction() { if(gameState === "DRAWING_PHASE") { document.getElementById("instruction").innerText = "🔥 难度升级：请从发光顶点滑向对边，画出高线"; document.getElementById("instruction").style.color = "#EF4444"; } else { if (!numFilled) { document.getElementById("instruction").innerText = `🎯 第一步：点击图形中的 [${stepNames[currentMission.steps.num]}] 作为分子`; activateSlot("numerator-slot"); document.getElementById("denominator-slot").classList.remove("active"); } else if (!denFilled) { document.getElementById("instruction").innerText = `🎯 第二步：点击图形中的 [${stepNames[currentMission.steps.den]}] 作为分母`; document.getElementById("numerator-slot").classList.remove("active"); activateSlot("denominator-slot"); } document.getElementById("instruction").style.color = "#FACC15"; } }
-    function showFloatingText(text, color) { const el = document.createElement('div'); el.className = 'ritual-text'; el.innerText = text; el.style.color = color; el.style.left = '50%'; el.style.top = '40%'; el.style.transform = 'translate(-50%, -50%)'; el.style.animation = 'flyUp 1s ease-out forwards'; document.getElementById('geometry-pane').appendChild(el); setTimeout(() => el.remove(), 1000); }
+    function showFloatingText(text, color) { const el = document.createElement('div'); el.className = 'ritual-text'; el.innerText = text; el.style.color = color; el.style.left = '50%'; el.style.top = '40%'; el.style.transform = 'translate(-50%, -50%)'; el.style.animation = 'flyUp 1s ease-out forwards'; document.getElementById('geometry-pane').appendChild(el); scheduleTimeout(() => el.remove(), 1000); }
     function varToRgb(varName) { const hex = getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); if(hex.startsWith('#')) return `${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}`; return "255,255,255"; }
 </script>
 <script src="../core/config.js"></script>

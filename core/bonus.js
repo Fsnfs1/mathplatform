@@ -571,8 +571,9 @@
       setLocalJson(this._boardKey(gameId), top10);
 
       const inTop10 = top10.some(item => item.sid === sid && item.score === finalScore && finalScore > 0);
+      let awardRes = null;
       if (inTop10) {
-        PointsLedger.awardPoints(sid, 'gameTop10Daily', POINTS_RULES.gameTop10Daily, {
+        awardRes = PointsLedger.awardPoints(sid, 'gameTop10Daily', POINTS_RULES.gameTop10Daily, {
           gameId: gameId,
           score: finalScore,
         });
@@ -600,6 +601,10 @@
               gameId: gameId,
               sid: sid,
               score: finalScore,
+              win: !!p.win,
+              durationMs: durationMs,
+              inTop10: inTop10,
+              pointsEntry: (awardRes && awardRes.awarded > 0 && awardRes.entry) ? awardRes.entry : null,
               top10: top10,
               playtime: timeStatus,
             },

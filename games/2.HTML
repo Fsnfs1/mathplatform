@@ -25,7 +25,7 @@
         .geometry-pane { position: relative; flex: 2; height: 100%; border-right: 4px solid #334155; overflow: hidden; display: flex; flex-direction: column; box-sizing: border-box; cursor: crosshair;}
         .viz-layer { flex: 1; min-height: 0; width: 100%; position: relative; }
 
-        #main-canvas, #particle-canvas, #ripple-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; object-fit: cover;}
+        #main-canvas, #particle-canvas, #ripple-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         #particle-canvas { z-index: 2; pointer-events: none; }
         #ripple-canvas { z-index: 3; pointer-events: none; }
 
@@ -77,6 +77,7 @@
         .take-btn:active { transform: scale(0.95); }
 
         @keyframes bgShake { 0% { transform: translate(0,0); } 20% { transform: translate(-15px, 10px) rotate(-1deg); } 40% { transform: translate(15px, -10px) rotate(1deg); } 60% { transform: translate(-15px, -10px) rotate(-1deg); } 80% { transform: translate(15px, 10px) rotate(1deg); } 100% { transform: translate(0,0); } }
+        @keyframes pulseRank { from { transform: scale(1); } to { transform: scale(1.03); } }
         .main-error { animation: bgShake 0.35s ease-in-out both; border-right: 15px solid var(--danger) !important; box-shadow: inset 0 0 250px rgba(239,68,68,0.7) !important; }
         .main-success { border-right: 15px solid var(--success); box-shadow: inset 0 0 150px rgba(16,185,129,0.3); transition: all 0.3s; }
 
@@ -86,7 +87,7 @@
         /* 輸入框修改，移除 margin-top，讓 Flexbox 接管排版 */
         .player-input { font-size: clamp(1rem, 2vw, 1.5rem); padding: 15px 20px; border-radius: 15px; border: 4px solid #475569; background: rgba(15,23,42,0.8); color: var(--light); text-align: center; outline: none; }
         .player-input:focus { border-color: var(--primary); box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-        .mega-btn { font-size: clamp(1.2rem, 2.5vw, 1.5rem); background: var(--primary); color: white; border: none; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4); transition: all 0.2s; white-space: nowrap; outline: none; }
+        .mega-btn { font-size: clamp(1.2rem, 2.5vw, 1.5rem); padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4); transition: all 0.2s; white-space: nowrap; outline: none; }
         .mega-btn:hover, .mega-btn:active { transform: scale(1.05) translateY(-2px); background: #1D4ED8; }
 
         .ritual-text { position: absolute; font-size: clamp(3rem, 6vw, 6rem); font-weight: bold; font-style: italic; opacity: 0; z-index: 50; text-shadow: 0 0 30px rgba(0,0,0,0.9); pointer-events: none; }
@@ -130,20 +131,20 @@
     <!-- 全新並排輸入區塊，加入 z-index 確保不被遮擋 -->
     <div style="display: flex; flex-direction: row; justify-content: center; align-items: stretch; gap: 10px; margin-top: 30px; width: 85%; max-width: 500px; position: relative; z-index: 20;">
         <input type="text" id="player-name" class="player-input" placeholder="輸入玩家代號..." autocomplete="off" maxlength="12" style="flex: 1; width: 0; min-width: 100px;">
-        <button class="mega-btn" ontouchstart="forceUnlockAudio()" onmousedown="forceUnlockAudio()" onclick="startGame()" style="padding: 0 20px; margin: 0;">🚀 挑戰確認</button>
+        <button class="mega-btn" ontouchstart="forceUnlockAudio()" onmousedown="forceUnlockAudio()" onclick="startGame()" style="margin: 0;">🚀 挑戰確認</button>
     </div>
 </div>
 
 <div class="game-wrapper hidden" id="main-wrapper">
     <div class="geometry-pane" id="geometry-pane">
-        <canvas id="particle-canvas"></canvas>
-        <canvas id="ripple-canvas"></canvas>
         <div class="q-floating-header">
             <div class="question-stem" id="question-text">晶石總數: 載入中...</div>
             <div class="instruction-text" id="instruction">每次最多拿 ? 個</div>
         </div>
-        <div class="viz-layer">
+        <div class="viz-layer" id="viz-layer">
             <canvas id="main-canvas"></canvas>
+            <canvas id="particle-canvas"></canvas>
+            <canvas id="ripple-canvas"></canvas>
         </div>
     </div>
 
@@ -288,9 +289,17 @@
         const buffer = SoundManager.ctx.createBuffer(1, 1, 22050); const source = SoundManager.ctx.createBufferSource(); source.buffer = buffer; source.connect(SoundManager.ctx.destination); source.start(0);
     };
 
+    let roundId = 0, aiTimerId = null, endTimerId = null, errorFlashTimerId = null;
+    function clearAllTimers() {
+        if (aiTimerId !== null) { clearTimeout(aiTimerId); aiTimerId = null; }
+        if (endTimerId !== null) { clearTimeout(endTimerId); endTimerId = null; }
+        if (errorFlashTimerId !== null) { clearTimeout(errorFlashTimerId); errorFlashTimerId = null; }
+    }
+
     function adaptCanvas() {
-        const pane = document.getElementById('geometry-pane'); if(!pane) return;
-        let cw = pane.clientWidth; let ch = pane.clientHeight; if (cw === 0 || ch === 0) return;
+        const viz = document.getElementById('viz-layer') || document.getElementById('geometry-pane');
+        if(!viz) return;
+        let cw = viz.clientWidth; let ch = viz.clientHeight; if (cw === 0 || ch === 0) return;
         canvas.width = cw; canvas.height = ch; pCanvas.width = cw; pCanvas.height = ch; rCanvas.width = cw; rCanvas.height = ch;
         if(gameState === "PLAYING") {
             calculateGemsLayout();
@@ -305,6 +314,11 @@
     }
 
     function startGame() {
+        roundId++;
+        clearAllTimers();
+        const myRound = roundId;
+        const gp = document.getElementById("geometry-pane"); if (gp) gp.classList.remove("main-error");
+
         try { SoundManager.init(); SoundManager.play('start'); SoundManager.startBGM(); } catch (e) {}
         enterFullScreen(); document.getElementById('fullscreen-toggle').classList.remove('hidden'); document.getElementById('btn-return').classList.remove('hidden'); 
         
@@ -327,11 +341,16 @@
         document.getElementById("instruction").innerText = `每次最少 1 個，最多拿 ${maxTake} 個`;
         
         buildActionButtons();
+        adaptCanvas();
         calculateGemsLayout();
         updateUI();
         
         if (currentTurn === "ai") {
-            setTimeout(aiLogic, 1500);
+            aiTimerId = setTimeout(() => {
+                aiTimerId = null;
+                if (myRound !== roundId || gameState !== "PLAYING") return;
+                aiLogic();
+            }, 1500);
         }
     }
 
@@ -378,12 +397,12 @@
     }
 
     function calculateGemsLayout() {
-        if(canvas.width === 0) return;
+        if(canvas.width === 0 || canvas.height === 0) return;
         gems = [];
         const paddingX = canvas.width * 0.1;
-        const paddingY = canvas.height * 0.15 + 80; 
-        const drawW = canvas.width - paddingX * 2;
-        const drawH = canvas.height - paddingY - (canvas.height * 0.1);
+        const paddingY = Math.min(canvas.height * 0.45, canvas.height * 0.15 + 80); 
+        const drawW = Math.max(40, canvas.width - paddingX * 2);
+        const drawH = Math.max(60, canvas.height - paddingY - (canvas.height * 0.1));
         
         const ratio = drawW / drawH;
         let cols = Math.ceil(Math.sqrt(totalItems * ratio));
@@ -391,6 +410,7 @@
         
         const spacingX = drawW / cols;
         const spacingY = drawH / rows;
+        const activeStart = Math.max(0, totalItems - remainingItems);
 
         for (let i = 0; i < totalItems; i++) {
             let c = i % cols;
@@ -401,7 +421,7 @@
                 id: i,
                 x: paddingX + c * spacingX + spacingX/2 + offsetX,
                 y: paddingY + r * spacingY + spacingY/2 + offsetY,
-                active: true,
+                active: i >= activeStart,
                 color: `hsl(${Math.random() * 40 + 180}, 100%, 65%)` 
             });
         }
@@ -429,6 +449,8 @@
     }
 
     function executeTake(count, isPlayer) {
+        if (gameState !== "PLAYING") return;
+        const myRound = roundId;
         if(count > remainingItems) count = remainingItems;
         remainingItems -= count;
         
@@ -448,17 +470,29 @@
             showFloatingText(`AI 拿走 ${count} 個`, '#A855F7');
             const geometryPane = document.getElementById("geometry-pane"); 
             geometryPane.classList.add("main-error"); 
-            setTimeout(() => geometryPane.classList.remove("main-error"), 300);
+            if (errorFlashTimerId !== null) clearTimeout(errorFlashTimerId);
+            errorFlashTimerId = setTimeout(() => {
+                errorFlashTimerId = null;
+                geometryPane.classList.remove("main-error");
+            }, 300);
         }
 
         if (remainingItems <= 0) {
             updateUI();
-            setTimeout(() => endGame(isPlayer ? "player" : "ai"), 800);
+            endTimerId = setTimeout(() => {
+                endTimerId = null;
+                if (myRound !== roundId || gameState !== "PLAYING") return;
+                endGame(isPlayer ? "player" : "ai");
+            }, 800);
         } else {
             currentTurn = isPlayer ? "ai" : "player";
             updateUI();
             if (currentTurn === "ai") {
-                setTimeout(aiLogic, Math.random() * 1000 + 800);
+                aiTimerId = setTimeout(() => {
+                    aiTimerId = null;
+                    if (myRound !== roundId || gameState !== "PLAYING") return;
+                    aiLogic();
+                }, Math.random() * 1000 + 800);
             }
         }
     }
@@ -487,6 +521,8 @@
     }
 
     function returnToMenu() {
+        roundId++;
+        clearAllTimers();
         try { SoundManager.stopBGM(); } catch(e) {} 
         gameState = "MENU";
         document.getElementById("btn-return").classList.add("hidden"); 
@@ -501,10 +537,12 @@
 
     let _roundStartTs = Date.now();
     function endGame(winner) {
+        roundId++;
+        clearAllTimers();
         try { SoundManager.stopBGM(); } catch(e){} 
         gameState = "GAMEOVER";
         document.getElementById('btn-return').classList.add('hidden');
-        try { if (window.GameBridge) window.GameBridge.report({ gameId: 'bash-nim', win: winner === 'player', durationMs: Date.now() - _roundStartTs }); } catch(e){}
+        try { if (window.GameBridge) window.GameBridge.report({ gameId: 'bash-nim', win: winner === 'player', durationMs: Date.now() - _roundStartTs, skipDurationRecord: window.parent !== window }); } catch(e){}
 
         let title, subtitle, rewardHTML = "";
 
