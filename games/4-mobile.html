@@ -158,7 +158,7 @@
 
         .info-pane {
             flex: 0 0 auto;
-            max-height: 50%;
+            max-height: 54%;
             width: 100%;
             background: radial-gradient(circle at top right, #1f2937 0%, #030712 100%);
             display: flex;
@@ -418,6 +418,14 @@
         .end-actions .mega-btn { flex: 1 1 150px; }
         .mega-btn.secondary { background: #475569; box-shadow: 0 6px 16px rgba(15, 23, 42, 0.5); }
 
+        @media (max-width: 360px) {
+            .take-btn {
+                font-size: 0.82rem;
+                padding: 8px 4px;
+                white-space: nowrap;
+            }
+        }
+
         /* Phone landscape side-by-side */
         @media (orientation: landscape) and (max-height: 500px) {
             .game-wrapper { flex-direction: row; }
@@ -442,9 +450,23 @@
             .pillar-pill { min-height: 44px; font-size: 0.78rem; padding: 3px 4px; }
             .action-grid { grid-template-columns: 1fr; gap: 6px; }
             .take-btn { min-height: 44px; font-size: 0.92rem; padding: 6px 8px; }
-            .overlay { padding: 8px calc(16px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); }
-            .overlay h1 { font-size: 1.45rem; }
-            .rules-box { padding: 8px 12px; }
+            .overlay { padding: 6px calc(16px + env(safe-area-inset-right)) 8px calc(16px + env(safe-area-inset-left)); }
+            .overlay-card { max-width: 720px; }
+            .overlay h1 { font-size: 1.3rem; margin: 0; line-height: 1.15; }
+            .overlay-subtitle { font-size: 0.86rem; margin: 2px 0 4px 0; }
+            .rules-box { padding: 6px 12px; margin: 4px 0; }
+            .rules-box h3 { font-size: 0.88rem; margin: 0 0 2px 0; }
+            .rules-box ul { font-size: 0.78rem; line-height: 1.28; }
+            .mgs-player-tag { font-size: 0.86rem; margin: 4px 0; }
+            .mega-btn { min-height: 44px; padding: 8px 18px; font-size: 0.96rem; border-radius: 12px; }
+            .reward-banner { padding: 6px 12px; margin: 4px 0; }
+            .reward-banner h2 { font-size: 1rem; }
+            .reward-banner p { font-size: 0.82rem; margin-top: 2px; }
+            .leaderboard-box { padding: 6px 10px; margin: 4px 0; }
+            .leaderboard-title { font-size: 0.9rem; margin: 0 0 4px 0; }
+            .mgs-top10 { font-size: 0.84rem; }
+            .mgs-top10 td, .mgs-top10 th { padding: 2px 6px; }
+            .end-actions { margin-top: 4px; gap: 8px; }
         }
     </style>
 </head>
@@ -1019,13 +1041,16 @@
         for (let i = 0; i < numPillars; i++) {
             const px = m.padX + i * m.spacingX;
 
-            // Selected pillar highlight box strictly inside [headerClearance, groundY]
+            // Selected pillar highlight box strictly inside [2, m.W - 2] and above groundY
             if (i === selectedCol) {
                 const boxW = Math.min(m.spacingX * 0.9, m.ringW + 12);
-                const boxTop = m.pillarTopY - 4;
-                const boxH = m.groundY - boxTop + 4;
+                const boxLeft = Math.max(2, px - boxW / 2);
+                const boxRight = Math.min(m.W - 2, px + boxW / 2);
+                const clampedW = Math.max(10, boxRight - boxLeft);
+                const boxTop = Math.max(2, m.pillarTopY - 4);
+                const boxH = Math.max(10, m.groundY - boxTop - 2);
                 ctx.fillStyle = "rgba(250, 204, 21, 0.16)";
-                roundRectPath(ctx, px - boxW / 2, boxTop, boxW, boxH, 8);
+                roundRectPath(ctx, boxLeft, boxTop, clampedW, boxH, 8);
                 ctx.fill();
                 ctx.strokeStyle = "rgba(250, 204, 21, 0.7)";
                 ctx.lineWidth = 2;

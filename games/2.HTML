@@ -48,15 +48,16 @@
             border-radius: 8px; text-align: center;
         }
 
-        .info-pane { flex: 1; height: 100%; background: radial-gradient(circle at top right, #1f2937 0%, #030712 100%); display: flex; flex-direction: column; padding: 3%; box-sizing: border-box; justify-content: flex-start; align-items: stretch; border-left: 2px solid #1f2937; z-index: 10;}
+        .info-pane { flex: 1; height: 100%; background: radial-gradient(circle at top right, #1f2937 0%, #030712 100%); display: flex; flex-direction: column; padding: 3%; box-sizing: border-box; justify-content: flex-start; align-items: stretch; border-left: 2px solid #1f2937; z-index: 10; overflow-y: auto; }
 
         .info-card { background: rgba(255,255,255,0.03); border: 3px solid #334155; border-radius: 20px; padding: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); margin-bottom: 20px;}
         .player-info { font-size: clamp(1.2rem, 1.8vw, 1.8rem); color: var(--glowing-cyan); margin-bottom: 10px; font-weight: bold; }
+        .rem-label { font-size: 1.2rem; color: #64748B; }
         
         .rem-box { font-size: clamp(3rem, 5vw, 5rem); color: var(--success); font-weight: bold; font-family: monospace; text-shadow: 0 0 20px rgba(16,185,129,0.5); margin: 10px 0;}
         .rem-box.ai-turn { color: var(--ai-color); text-shadow: 0 0 20px rgba(168,85,247,0.5); }
 
-        .formula-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; background: rgba(0,0,0,0.2); border-radius: 20px; border: 4px solid var(--primary); padding: 5%; box-shadow: 0 0 40px rgba(59, 130, 246, 0.2); transition: filter 0.3s;}
+        .formula-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; background: rgba(0,0,0,0.2); border-radius: 20px; border: 4px solid var(--primary); padding: 5%; box-shadow: 0 0 40px rgba(59, 130, 246, 0.2); transition: filter 0.3s; box-sizing: border-box; }
         .formula-zone.locked { filter: grayscale(100%) opacity(0.3); pointer-events: none;}
         .formula-title { font-size: clamp(1.3rem, 2.5vw, 2rem); color: #94A3B8; margin-top: 0; margin-bottom: 20px; letter-spacing: 2px;}
 
@@ -100,9 +101,40 @@
         .layout-btn { background: rgba(15, 23, 42, 0.8); border: 2px solid #475569; color: var(--light); padding: 8px 16px; border-radius: 10px; cursor: pointer; font-size: clamp(0.9rem, 1.5vw, 1.2rem); font-weight: bold; transition: all 0.2s; }
         .layout-btn.active-layout { border-color: var(--accent); color: var(--accent); }
 
+        @media (max-width: 1024px), (max-height: 650px) {
+            .controls-top-left { top: 8px; left: 8px; gap: 6px; }
+            .layout-btn, .fullscreen-btn { padding: 5px 10px; font-size: 0.85rem; border-radius: 8px; }
+            .fullscreen-btn { top: 8px; right: 8px; }
+            .q-floating-header { top: 44px; }
+            .info-pane { padding: 44px 12px 10px; }
+            .info-card { padding: 8px 10px; margin-bottom: 8px; border-radius: 14px; border-width: 2px; }
+            .player-info { font-size: clamp(0.95rem, 1.6vw, 1.25rem); margin-bottom: 4px; }
+            .rem-label { font-size: 0.85rem; }
+            .rem-box { font-size: clamp(1.8rem, 3.6vw, 2.8rem); margin: 2px 0; }
+            .formula-zone { padding: 8px 10px; border-radius: 14px; border-width: 3px; }
+            .formula-title { font-size: clamp(1rem, 1.8vw, 1.35rem); margin-bottom: 6px; }
+            .action-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+            .take-btn { padding: 8px 4px; font-size: clamp(0.95rem, 1.6vw, 1.2rem); min-height: 40px; border-width: 2px; }
+        }
+
         .game-wrapper.portrait { flex-direction: column; }
-        .game-wrapper.portrait .geometry-pane { flex: 1.2; border-right: none; border-bottom: 4px solid #334155; width: 100%; position: relative;}
-        .game-wrapper.portrait .info-pane { flex: 1; border-left: none; width: 100%; padding: 15px;}
+        .game-wrapper.portrait .geometry-pane { flex: 1.4; border-right: none; border-bottom: 4px solid #334155; width: 100%; position: relative; }
+        .game-wrapper.portrait .info-pane { flex: 1; border-left: none; width: 100%; padding: 10px 14px; overflow-y: auto; }
+        .game-wrapper.portrait .q-floating-header { top: 44px; }
+        .game-wrapper.portrait .question-stem { padding: 5px 18px; font-size: clamp(1rem, 2.2vw, 1.35rem); }
+        .game-wrapper.portrait .instruction-text { padding: 4px 14px; font-size: clamp(0.85rem, 1.8vw, 1.05rem); margin-top: 4px; }
+        .game-wrapper.portrait #stats-card {
+            display: flex; flex-direction: row; align-items: center; justify-content: space-between;
+            gap: 10px; padding: 6px 14px; margin: 0; border-radius: 0; border: none;
+            border-top: 1px solid #334155; background: rgba(15, 23, 42, 0.92); box-shadow: none; flex-shrink: 0;
+        }
+        .game-wrapper.portrait #stats-card .player-info { margin: 0; font-size: clamp(0.95rem, 2vw, 1.2rem); text-align: left; }
+        .game-wrapper.portrait #stats-card .rem-label { font-size: 0.85rem; margin-left: auto; }
+        .game-wrapper.portrait #stats-card .rem-box { font-size: clamp(1.3rem, 3vw, 1.8rem); margin: 0; }
+        .game-wrapper.portrait .formula-zone { padding: 8px 12px; }
+        .game-wrapper.portrait .formula-title { margin-bottom: 6px; font-size: 1.05rem; }
+        .game-wrapper.portrait .action-grid { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; }
+        .game-wrapper.portrait .take-btn { padding: 8px 6px; font-size: clamp(0.95rem, 1.8vw, 1.2rem); }
     </style>
 </head>
 <body>
@@ -151,7 +183,7 @@
     <div class="info-pane" id="right-pane">
         <div class="info-card" id="stats-card">
             <div class="player-info" id="turn-display">輪到誰？</div>
-            <div style="font-size: 1.2rem; color: #64748B;">剩餘晶石</div>
+            <div class="rem-label">剩餘晶石</div>
             <div class="rem-box" id="rem-display">0</div>
         </div>
 
@@ -251,8 +283,8 @@
     }
 
     function checkDeviceLayout() { 
-        const isMobile = window.innerWidth <= 1024 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent); 
-        setLayout(isMobile ? 'portrait' : 'landscape'); 
+        const isPortrait = window.innerHeight > window.innerWidth; 
+        setLayout(isPortrait ? 'portrait' : 'landscape'); 
     }
 
     function setLayout(mode) {

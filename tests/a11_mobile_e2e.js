@@ -678,6 +678,12 @@ async function testDesktopAndIpadIframe(browser, base) {
     },
   ];
 
+  const desktopGames = [
+    { gid: 'trig-ratio', file: 'games/328.HTML' },
+    { gid: 'bash-nim', file: 'games/2.HTML' },
+    { gid: 'ring-nim', file: 'games/4.html' },
+  ];
+
   for (const prof of profiles) {
     const page = await browser.newPage(base, prof);
     try {
@@ -685,7 +691,208 @@ async function testDesktopAndIpadIframe(browser, base) {
       await page.goto(`${base}/app.html?screen=games`);
       await page.waitFor(() => window.AppUI && document.querySelector('#gameCardsRow button[data-gid="bash-nim"]'), 12000);
 
-      // Launch game in iframe
+      // Task 4: Offline .d-none check (external CDNs blocked) before launching any game
+      assert.ok(page._blockedUrls.some((u) => u.includes('cdn.jsdelivr.net')), `${prof.label} external CDNs blocked offline`);
+      const initialDnone = await page.eval(() => {
+        const wrap = document.getElementById('gameIframeWrap');
+        const warn = document.getElementById('gameIframeWarn');
+        return {
+          wrapHasDnone: wrap.classList.contains('d-none'),
+          wrapDisplay: getComputedStyle(wrap).display,
+          wrapH: wrap.getBoundingClientRect().height,
+          warnHasDnone: warn.classList.contains('d-none'),
+          warnDisplay: getComputedStyle(warn).display,
+          warnH: warn.getBoundingClientRect().height,
+        };
+      });
+      assert.strictEqual(initialDnone.wrapHasDnone, true, `${prof.label} #gameIframeWrap has .d-none initially`);
+      assert.strictEqual(initialDnone.wrapDisplay, 'none', `${prof.label} #gameIframeWrap display===none offline`);
+      assert.strictEqual(initialDnone.wrapH, 0, `${prof.label} #gameIframeWrap height===0 offline`);
+      assert.strictEqual(initialDnone.warnHasDnone, true, `${prof.label} #gameIframeWarn has .d-none initially`);
+      assert.strictEqual(initialDnone.warnDisplay, 'none', `${prof.label} #gameIframeWarn display===none offline`);
+      assert.strictEqual(initialDnone.warnH, 0, `${prof.label} #gameIframeWarn height===0 offline`);
+
+      // Task 1: Desktop & iPad #gameIframe geometry checks across ALL 3 games
+      for (const g of desktopGames) {
+        await page.clickSelector(`#gameCardsRow button[data-gid="${g.gid}"]`);
+        await page.waitFor((expectedSrc) => {
+          const w = document.getElementById('gameIframeWrap');
+          const f = document.getElementById('gameIframe');
+          return w && !w.classList.contains('d-none')
+            && f && f.getAttribute('src') === expectedSrc
+            && f.contentWindow && f.contentWindow.document
+            && f.contentWindow.document.readyState === 'complete'
+            && typeof f.contentWindow.startGame === 'function';
+        }, 10000, g.file);
+
+        // With plenty of daily time remaining, #gameIframeWarn must still be display:none offline
+        const warnHiddenWhileOpen = await page.eval(() => {
+          const warn = document.getElementById('gameIframeWarn');
+          return { hasDnone: warn.classList.contains('d-none'), display: getComputedStyle(warn).display };
+        });
+        assert.strictEqual(warnHiddenWhileOpen.hasDnone, true, `${prof.label} ${g.gid} #gameIframeWarn keeps .d-none`);
+        assert.strictEqual(warnHiddenWhileOpen.display, 'none', `${prof.label} ${g.gid} #gameIframeWarn display===none offline`);
+
+        // Start the game inside #gameIframe (worst-case maxTake=9 for 2.HTML, numPillars=7 for 4.html)
+        await page.eval((gid) => {
+          const fw = document.getElementById('gameIframe').contentWindow;
+          const fd = fw.document;
+          if (gid === 'trig-ratio') {
+            fw.startGame('30s');
+          } else if (gid === 'bash-nim') {
+            let tries = 0;
+            do { fw.startGame(); } while (fd.querySelectorAll('#action-grid .take-btn').length < 9 && tries++ < 40);
+            if (fd.querySelectorAll('#action-grid .take-btn').length !== 9) throw new Error('Could not roll maxTake=9 in 2.HTML');
+          } else {
+            let tries = 0;
+            do { fw.startGame(); } while (!String((fd.getElementById('question-text') || {}).textContent || '').includes('7') && tries++ < 40);
+            if (!String((fd.getElementById('question-text') || {}).textContent || '').includes('7')) throw new Error('Could not roll numPillars=7 in 4.html');
+          }
+        }, g.gid);
+        await sleep(140);
+
+        const landGeo = await page.eval((gid) => {
+          const f = document.getElementById('gameIframe');
+          const fw = f.contentWindow;
+          const fd = fw.document;
+          const rectOf = (el) => {
+            if (!el) return null;
+            const cs = fw.getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden' || el.classList.contains('hidden')) return null;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return null;
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+          };
+          const overlap = (a, b) => !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+
+          const wrapper = fd.getElementById('main-wrapper');
+          const cv = fd.getElementById('main-canvas');
+          const hdr = fd.querySelector('.q-floating-header');
+          const stats = fd.getElementById('stats-card');
+          const ctl = fd.querySelector('.controls-top-left');
+          const fsBtn = fd.getElementById('fullscreen-toggle');
+          const infoPane = fd.querySelector('.info-pane');
+          const takeBtns = Array.from(fd.querySelectorAll('#action-grid .take-btn')).map((b) => rectOf(b));
+
+          const hdrR = rectOf(hdr);
+          const statsR = rectOf(stats);
+          const ctlR = rectOf(ctl);
+          const fsR = rectOf(fsBtn);
+
+          return {
+            iframeW: f.clientWidth,
+            iframeH: f.clientHeight,
+            isPortrait: wrapper.classList.contains('portrait'),
+            canvasRectH: cv.getBoundingClientRect().height,
+            canvasAttrH: cv.height,
+            hdrR,
+            statsR,
+            ctlR,
+            fsR,
+            overlapHdrStats: overlap(hdrR, statsR),
+            overlapCtlHdr: overlap(ctlR, hdrR),
+            overlapCtlStats: overlap(ctlR, statsR),
+            overlapFsHdr: overlap(fsR, hdrR),
+            overlapFsStats: overlap(fsR, statsR),
+            infoScrollH: infoPane ? infoPane.scrollHeight : 0,
+            infoClientH: infoPane ? infoPane.clientHeight : 0,
+            takeBtnCount: takeBtns.length,
+            takeBtnMaxBottom: takeBtns.length ? Math.max(...takeBtns.filter(Boolean).map((b) => b.bottom)) : 0,
+            pillarTopY: gid === 'ring-nim' && typeof fw.getSceneMetrics === 'function' ? fw.getSceneMetrics().pillarTopY : null,
+          };
+        }, g.gid);
+
+        assert.strictEqual(landGeo.isPortrait, false, `${prof.label} ${g.gid} default #gameIframe layout must NOT be .portrait`);
+        assert.ok(landGeo.canvasRectH >= 450, `${prof.label} ${g.gid} landscape canvas height ${landGeo.canvasRectH} >= 450`);
+        assert.strictEqual(landGeo.overlapHdrStats, false, `${prof.label} ${g.gid} landscape zero overlap header vs stats`);
+        assert.strictEqual(landGeo.overlapCtlHdr, false, `${prof.label} ${g.gid} landscape zero overlap controls vs header`);
+        assert.strictEqual(landGeo.overlapCtlStats, false, `${prof.label} ${g.gid} landscape zero overlap controls vs stats`);
+        assert.strictEqual(landGeo.overlapFsHdr, false, `${prof.label} ${g.gid} landscape zero overlap fullscreen vs header`);
+        assert.strictEqual(landGeo.overlapFsStats, false, `${prof.label} ${g.gid} landscape zero overlap fullscreen vs stats`);
+        if (g.gid === 'ring-nim') {
+          assert.ok(landGeo.pillarTopY >= 0, `${prof.label} 4.html landscape pillarTopY (${landGeo.pillarTopY}) >= 0`);
+        }
+        if (g.gid === 'bash-nim') {
+          assert.strictEqual(landGeo.takeBtnCount, 9, `${prof.label} 2.HTML maxTake=9 renders 9 buttons`);
+          assert.ok(
+            landGeo.infoScrollH <= landGeo.infoClientH + 1 || landGeo.takeBtnMaxBottom <= 560 + 1,
+            `${prof.label} 2.HTML maxTake=9 fits without clipping (scrollH=${landGeo.infoScrollH}, clientH=${landGeo.infoClientH}, maxBottom=${landGeo.takeBtnMaxBottom})`
+          );
+          assert.ok(landGeo.takeBtnMaxBottom <= 560 + 1, `${prof.label} 2.HTML maxTake=9 all buttons bottom <= 560 (got ${landGeo.takeBtnMaxBottom})`);
+        }
+        await page.screenshot(`${prof.shot}_${g.gid}_landscape`);
+
+        // Toggle 📱 竪屏 (setLayout('portrait')) inside #gameIframe
+        await page.eval(() => {
+          const fw = document.getElementById('gameIframe').contentWindow;
+          fw.document.getElementById('btn-portrait').click();
+        });
+        await sleep(140);
+
+        const portGeo = await page.eval((gid) => {
+          const fw = document.getElementById('gameIframe').contentWindow;
+          const fd = fw.document;
+          const rectOf = (el) => {
+            if (!el) return null;
+            const cs = fw.getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden' || el.classList.contains('hidden')) return null;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return null;
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+          };
+          const overlap = (a, b) => !!(a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1);
+
+          const wrapper = fd.getElementById('main-wrapper');
+          const viz = fd.getElementById('viz-layer');
+          const hdr = fd.querySelector('.q-floating-header');
+          const stats = fd.getElementById('stats-card');
+          const ctl = fd.querySelector('.controls-top-left');
+          const fsBtn = fd.getElementById('fullscreen-toggle');
+
+          const vizR = rectOf(viz);
+          const hdrR = rectOf(hdr);
+          const statsR = rectOf(stats);
+          const ctlR = rectOf(ctl);
+          const fsR = rectOf(fsBtn);
+
+          return {
+            isPortrait: wrapper.classList.contains('portrait'),
+            vizH: vizR ? vizR.height : 0,
+            vizBottom: vizR ? vizR.bottom : 0,
+            hdrBottom: hdrR ? hdrR.bottom : 0,
+            overlapHdrStats: overlap(hdrR, statsR),
+            overlapCtlHdr: overlap(ctlR, hdrR),
+            overlapCtlStats: overlap(ctlR, statsR),
+            overlapFsHdr: overlap(fsR, hdrR),
+            overlapFsStats: overlap(fsR, statsR),
+            pillarTopY: gid === 'ring-nim' && typeof fw.getSceneMetrics === 'function' ? fw.getSceneMetrics().pillarTopY : null,
+          };
+        }, g.gid);
+
+        assert.strictEqual(portGeo.isPortrait, true, `${prof.label} ${g.gid} toggled to .portrait`);
+        assert.ok(portGeo.vizH >= 160, `${prof.label} ${g.gid} portrait #viz-layer.height (${portGeo.vizH}) >= 160`);
+        assert.ok(portGeo.hdrBottom <= portGeo.vizBottom + 1, `${prof.label} ${g.gid} portrait .q-floating-header.bottom (${portGeo.hdrBottom}) <= viz-layer.bottom (${portGeo.vizBottom})`);
+        assert.strictEqual(portGeo.overlapHdrStats, false, `${prof.label} ${g.gid} portrait zero overlap header vs stats`);
+        assert.strictEqual(portGeo.overlapCtlHdr, false, `${prof.label} ${g.gid} portrait zero overlap controls vs header`);
+        assert.strictEqual(portGeo.overlapCtlStats, false, `${prof.label} ${g.gid} portrait zero overlap controls vs stats`);
+        assert.strictEqual(portGeo.overlapFsHdr, false, `${prof.label} ${g.gid} portrait zero overlap fullscreen vs header`);
+        assert.strictEqual(portGeo.overlapFsStats, false, `${prof.label} ${g.gid} portrait zero overlap fullscreen vs stats`);
+        if (g.gid === 'ring-nim') {
+          assert.ok(portGeo.pillarTopY >= 0, `${prof.label} 4.html portrait pillarTopY (${portGeo.pillarTopY}) >= 0`);
+        }
+        await page.screenshot(`${prof.shot}_${g.gid}_portrait`);
+
+        // Close game iframe via openGamesApp() before next game & verify offline .d-none restored
+        await page.eval(() => { window.AppUI.openGamesApp(); });
+        const closedDnone = await page.eval(() => {
+          const wrap = document.getElementById('gameIframeWrap');
+          return { hasDnone: wrap.classList.contains('d-none'), display: getComputedStyle(wrap).display };
+        });
+        assert.strictEqual(closedDnone.hasDnone, true, `${prof.label} ${g.gid} close restores .d-none`);
+        assert.strictEqual(closedDnone.display, 'none', `${prof.label} ${g.gid} close display===none offline`);
+      }
+
+      // Launch bash-nim for countdown, visibility, sleep clamp, outbox, and teardown tests
       await page.clickSelector('#gameCardsRow button[data-gid="bash-nim"]');
       await page.waitFor(() => {
         const w = document.getElementById('gameIframeWrap');
@@ -1003,20 +1210,35 @@ async function testMobileGame1Trig(browser, base) {
       await page.goto(`${base}/games/328-mobile.html?gameId=trig-ratio`);
       await page.waitFor(() => !!document.getElementById('mgs-countdown') && typeof window.startGame === 'function', 8000);
 
-      // Start screen: zero MathJax CDN, h1 not clipped above HUD
+      // Start screen: zero MathJax CDN, h1 not clipped above HUD, and 844x390 landscape overlay fit
       const startCheck = await page.eval(() => {
         const hud = document.getElementById('mgs-hud').getBoundingClientRect();
-        const h1 = document.querySelector('#start-screen h1').getBoundingClientRect();
+        const ov = document.getElementById('start-screen');
+        const h1 = ov.querySelector('h1').getBoundingClientRect();
         const mj = document.getElementById('MathJax-script');
+        const btns = Array.from(ov.querySelectorAll('button')).map((b) => {
+          const r = b.getBoundingClientRect();
+          return { text: b.textContent.trim(), bottom: r.bottom, top: r.top, w: r.width, h: r.height };
+        }).filter((b) => b.w > 0 && b.h > 0);
         return {
           hasMathJaxTag: !!mj,
           h1Top: h1.top,
           hudBottom: hud.bottom,
-          scrollTop: document.getElementById('start-screen').scrollTop,
+          scrollTop: ov.scrollTop,
+          scrollH: ov.scrollHeight,
+          clientH: ov.clientHeight,
+          btns,
         };
       });
       assert.strictEqual(startCheck.hasMathJaxTag, false, `328-mobile ${vp.label} has zero MathJax CDN script`);
       assert.ok(startCheck.h1Top >= startCheck.hudBottom - 1, `328-mobile ${vp.label} start h1 (${startCheck.h1Top}) >= hud (${startCheck.hudBottom})`);
+      if (vp.label === '844x390') {
+        assert.ok(startCheck.scrollH <= startCheck.clientH + 1, `328-mobile 844x390 start overlay scrollH (${startCheck.scrollH}) <= clientH (${startCheck.clientH})`);
+        assert.ok(startCheck.btns.length >= 3, '328-mobile 844x390 start has all 3 CTA buttons');
+        for (const b of startCheck.btns) {
+          assert.ok(b.bottom <= 390 + 0.5, `328-mobile 844x390 start CTA "${b.text}" bottom (${b.bottom}) <= 390`);
+        }
+      }
 
       // Non-invasively spy on fillText & arc to inspect vertex labels and angle arc sweeps
       await page.eval(() => {
@@ -1208,6 +1430,53 @@ async function testMobileGame1Trig(browser, base) {
     await xssPage.close();
   }
 
+  // Landscape 844x390 1-row End .overlay fit check
+  const landEnd1 = await browser.newPage(base, {
+    ua: iPhoneUA, width: 844, height: 390, screenW: 844, screenH: 390, dpr: 3, mobile: true, maxTouch: 5, coarse: true,
+  });
+  try {
+    await seedStorage(landEnd1, base, { session: STUDENT_4C7, usedMs: 0 });
+    await landEnd1.goto(`${base}/games/328-mobile.html?gameId=trig-ratio`);
+    await landEnd1.waitFor(() => typeof window.endGame === 'function', 8000);
+    await landEnd1.clickSelector('#start-screen button');
+    await landEnd1.waitFor(() => !document.getElementById('main-wrapper').classList.contains('hidden'), 5000);
+    await landEnd1.eval(() => {
+      score = 300;
+      endGame();
+    });
+    await landEnd1.waitFor(() => !!document.querySelector('.end-overlay .mgs-top10 tbody tr'), 5000);
+    const landEndCheck = await landEnd1.eval(() => {
+      const ov = document.querySelector('.end-overlay');
+      const hud = document.getElementById('mgs-hud').getBoundingClientRect();
+      const h1 = ov.querySelector('h1').getBoundingClientRect();
+      const rows = ov.querySelectorAll('.mgs-top10 tbody tr').length;
+      const btns = Array.from(ov.querySelectorAll('button')).map((b) => {
+        const r = b.getBoundingClientRect();
+        return { text: b.textContent.trim(), bottom: r.bottom, top: r.top, w: r.width, h: r.height };
+      }).filter((b) => b.w > 0 && b.h > 0);
+      return {
+        scrollH: ov.scrollHeight,
+        clientH: ov.clientHeight,
+        h1Top: h1.top,
+        hudBottom: hud.bottom,
+        rows,
+        btns,
+      };
+    });
+    assert.strictEqual(landEndCheck.rows, 1, '328-mobile 844x390 end has 1 Top10 row');
+    assert.ok(landEndCheck.h1Top >= landEndCheck.hudBottom - 1, '328-mobile 844x390 end h1 >= hud');
+    assert.ok(landEndCheck.scrollH <= landEndCheck.clientH + 1, `328-mobile 844x390 end overlay scrollH (${landEndCheck.scrollH}) <= clientH (${landEndCheck.clientH})`);
+    assert.ok(landEndCheck.btns.some((b) => b.text.includes('再玩一次')), '328-mobile 844x390 end has Replay button');
+    assert.ok(landEndCheck.btns.some((b) => b.text.includes('返回遊戲大廳')), '328-mobile 844x390 end has Lobby button');
+    for (const b of landEndCheck.btns) {
+      assert.ok(b.bottom <= 390 + 0.5, `328-mobile 844x390 end CTA "${b.text}" bottom (${b.bottom}) <= 390`);
+    }
+    await landEnd1.screenshot('mobile_844x390_328_end');
+    assert.deepStrictEqual(landEnd1._errors, [], 'no page errors on 328-mobile 844x390 end');
+  } finally {
+    await landEnd1.close();
+  }
+
   console.log('[PASS] Game 1 (328-mobile.html) across 4 viewports + math/vertices/arcs/taps/timers/XSS/end');
 }
 
@@ -1227,12 +1496,29 @@ async function testMobileGame2Bash(browser, base) {
       await page.goto(`${base}/games/2-mobile.html?gameId=bash-nim`);
       await page.waitFor(() => !!document.getElementById('mgs-countdown') && typeof window.startGame === 'function', 8000);
 
-      // Start screen h1 >= hudBottom
-      const startGeo = await page.eval(() => ({
-        h1Top: document.querySelector('#start-screen h1').getBoundingClientRect().top,
-        hudBottom: document.getElementById('mgs-hud').getBoundingClientRect().bottom,
-      }));
+      // Start screen h1 >= hudBottom + 844x390 landscape overlay fit
+      const startGeo = await page.eval(() => {
+        const ov = document.getElementById('start-screen');
+        const btns = Array.from(ov.querySelectorAll('button')).map((b) => {
+          const r = b.getBoundingClientRect();
+          return { text: b.textContent.trim(), bottom: r.bottom, top: r.top, w: r.width, h: r.height };
+        }).filter((b) => b.w > 0 && b.h > 0);
+        return {
+          h1Top: ov.querySelector('h1').getBoundingClientRect().top,
+          hudBottom: document.getElementById('mgs-hud').getBoundingClientRect().bottom,
+          scrollH: ov.scrollHeight,
+          clientH: ov.clientHeight,
+          btns,
+        };
+      });
       assert.ok(startGeo.h1Top >= startGeo.hudBottom - 1, `2-mobile ${vp.label} start h1 not clipped above HUD`);
+      if (vp.label === '844x390') {
+        assert.ok(startGeo.scrollH <= startGeo.clientH + 1, `2-mobile 844x390 start overlay scrollH (${startGeo.scrollH}) <= clientH (${startGeo.clientH})`);
+        assert.ok(startGeo.btns.some((b) => b.text.includes('挑戰確認')), '2-mobile 844x390 start has 挑戰確認 button');
+        for (const b of startGeo.btns) {
+          assert.ok(b.bottom <= 390 + 0.5, `2-mobile 844x390 start CTA "${b.text}" bottom (${b.bottom}) <= 390`);
+        }
+      }
 
       // Trigger genuine startGame() until random maxTake === 9 (so we verify worst-case 9-button layout)
       await page.clickSelector('#start-screen .mega-btn');
@@ -1363,6 +1649,50 @@ async function testMobileGame2Bash(browser, base) {
     await endPage.close();
   }
 
+  // Landscape 844x390 1-row End .overlay fit check
+  const landEnd2 = await browser.newPage(base, {
+    ua: iPhoneUA, width: 844, height: 390, screenW: 844, screenH: 390, dpr: 3, mobile: true, maxTouch: 5, coarse: true,
+  });
+  try {
+    await seedStorage(landEnd2, base, { session: STUDENT_4C7, usedMs: 0 });
+    await landEnd2.goto(`${base}/games/2-mobile.html?gameId=bash-nim`);
+    await landEnd2.waitFor(() => typeof window.endGame === 'function', 8000);
+    await landEnd2.clickSelector('#start-screen .mega-btn');
+    await landEnd2.waitFor(() => !document.getElementById('main-wrapper').classList.contains('hidden'), 5000);
+    await landEnd2.eval(() => endGame('player'));
+    await landEnd2.waitFor(() => !!document.querySelector('#game-over-screen .mgs-top10 tbody tr'), 5000);
+    const landEndCheck = await landEnd2.eval(() => {
+      const ov = document.getElementById('game-over-screen');
+      const hud = document.getElementById('mgs-hud').getBoundingClientRect();
+      const h1 = ov.querySelector('h1').getBoundingClientRect();
+      const rows = ov.querySelectorAll('.mgs-top10 tbody tr').length;
+      const btns = Array.from(ov.querySelectorAll('button')).map((b) => {
+        const r = b.getBoundingClientRect();
+        return { text: b.textContent.trim(), bottom: r.bottom, top: r.top, w: r.width, h: r.height };
+      }).filter((b) => b.w > 0 && b.h > 0);
+      return {
+        scrollH: ov.scrollHeight,
+        clientH: ov.clientHeight,
+        h1Top: h1.top,
+        hudBottom: hud.bottom,
+        rows,
+        btns,
+      };
+    });
+    assert.strictEqual(landEndCheck.rows, 1, '2-mobile 844x390 end has 1 Top10 row');
+    assert.ok(landEndCheck.h1Top >= landEndCheck.hudBottom - 1, '2-mobile 844x390 end h1 >= hud');
+    assert.ok(landEndCheck.scrollH <= landEndCheck.clientH + 1, `2-mobile 844x390 end overlay scrollH (${landEndCheck.scrollH}) <= clientH (${landEndCheck.clientH})`);
+    assert.ok(landEndCheck.btns.some((b) => b.text.includes('再挑戰一次')), '2-mobile 844x390 end has Replay button');
+    assert.ok(landEndCheck.btns.some((b) => b.text.includes('返回遊戲大廳')), '2-mobile 844x390 end has Lobby button');
+    for (const b of landEndCheck.btns) {
+      assert.ok(b.bottom <= 390 + 0.5, `2-mobile 844x390 end CTA "${b.text}" bottom (${b.bottom}) <= 390`);
+    }
+    await landEnd2.screenshot('mobile_844x390_2_end');
+    assert.deepStrictEqual(landEnd2._errors, [], 'no page errors on 2-mobile 844x390 end');
+  } finally {
+    await landEnd2.close();
+  }
+
   console.log('[PASS] Game 2 (2-mobile.html) across 4 viewports + DPR/maxTake=9/AI/timers/end');
 }
 
@@ -1382,20 +1712,85 @@ async function testMobileGame3Ring(browser, base) {
       await page.goto(`${base}/games/4-mobile.html?gameId=ring-nim`);
       await page.waitFor(() => !!document.getElementById('mgs-countdown') && typeof window.startGame === 'function', 8000);
 
-      // Start screen: zero literal $n$, h1 >= hudBottom, and roundRect fallback test
+      // Start screen: zero literal $n$, h1 >= hudBottom, 844x390 landscape overlay fit, roundRect fallback & canvas highlight box spy
       const startCheck = await page.eval(() => {
         const bodyText = document.body.innerText || '';
-        const h1 = document.querySelector('#start-screen h1').getBoundingClientRect();
+        const ov = document.getElementById('start-screen');
+        const h1 = ov.querySelector('h1').getBoundingClientRect();
         const hud = document.getElementById('mgs-hud').getBoundingClientRect();
+        const btns = Array.from(ov.querySelectorAll('button')).map((b) => {
+          const r = b.getBoundingClientRect();
+          return { text: b.textContent.trim(), bottom: r.bottom, top: r.top, w: r.width, h: r.height };
+        }).filter((b) => b.w > 0 && b.h > 0);
         delete CanvasRenderingContext2D.prototype.roundRect;
+
+        // Non-invasive Canvas 2D path spy to capture selection highlight strokes on #main-canvas
+        window.__highlightBoxes = [];
+        const proto = CanvasRenderingContext2D.prototype;
+        const origBegin = proto.beginPath;
+        const origMove = proto.moveTo;
+        const origLine = proto.lineTo;
+        const origQuad = proto.quadraticCurveTo;
+        const origRect = proto.rect;
+        const origStroke = proto.stroke;
+        proto.beginPath = function () {
+          if (this && this.canvas && this.canvas.id === 'main-canvas') this.__pathPts = [];
+          return origBegin.apply(this, arguments);
+        };
+        proto.moveTo = function (x, y) {
+          if (this && this.canvas && this.canvas.id === 'main-canvas' && this.__pathPts) this.__pathPts.push([x, y]);
+          return origMove.apply(this, arguments);
+        };
+        proto.lineTo = function (x, y) {
+          if (this && this.canvas && this.canvas.id === 'main-canvas' && this.__pathPts) this.__pathPts.push([x, y]);
+          return origLine.apply(this, arguments);
+        };
+        proto.quadraticCurveTo = function (cpx, cpy, x, y) {
+          if (this && this.canvas && this.canvas.id === 'main-canvas' && this.__pathPts) {
+            this.__pathPts.push([cpx, cpy], [x, y]);
+          }
+          return origQuad.apply(this, arguments);
+        };
+        proto.rect = function (x, y, w, h) {
+          if (this && this.canvas && this.canvas.id === 'main-canvas' && this.__pathPts) {
+            this.__pathPts.push([x, y], [x + w, y + h]);
+          }
+          return origRect.apply(this, arguments);
+        };
+        proto.stroke = function () {
+          if (this && this.canvas && this.canvas.id === 'main-canvas' && this.__pathPts && this.__pathPts.length) {
+            if (/250,\s*204,\s*21/.test(String(this.strokeStyle))) {
+              const xs = this.__pathPts.map((p) => p[0]);
+              const ys = this.__pathPts.map((p) => p[1]);
+              window.__highlightBoxes.push({
+                minX: Math.min(...xs),
+                maxX: Math.max(...xs),
+                minY: Math.min(...ys),
+                maxY: Math.max(...ys),
+              });
+            }
+          }
+          return origStroke.apply(this, arguments);
+        };
+
         return {
           hasRawDollarN: bodyText.includes('$n$'),
           h1Top: h1.top,
           hudBottom: hud.bottom,
+          scrollH: ov.scrollHeight,
+          clientH: ov.clientHeight,
+          btns,
         };
       });
       assert.strictEqual(startCheck.hasRawDollarN, false, `4-mobile ${vp.label} zero literal $n$`);
       assert.ok(startCheck.h1Top >= startCheck.hudBottom - 1, `4-mobile ${vp.label} start h1 not clipped above HUD`);
+      if (vp.label === '844x390') {
+        assert.ok(startCheck.scrollH <= startCheck.clientH + 1, `4-mobile 844x390 start overlay scrollH (${startCheck.scrollH}) <= clientH (${startCheck.clientH})`);
+        assert.ok(startCheck.btns.some((b) => b.text.includes('挑戰確認')), '4-mobile 844x390 start has 挑戰確認 button');
+        for (const b of startCheck.btns) {
+          assert.ok(b.bottom <= 390 + 0.5, `4-mobile 844x390 start CTA "${b.text}" bottom (${b.bottom}) <= 390`);
+        }
+      }
 
       // Start genuine game & roll numPillars === 7 for worst-case geometry test
       await page.clickSelector('#start-screen .mega-btn');
@@ -1417,6 +1812,12 @@ async function testMobileGame3Ring(browser, base) {
         const pills = Array.from(document.querySelectorAll('#pillar-pills .pillar-pill')).map((b) => b.textContent.trim());
         const rect = cv.getBoundingClientRect();
         const statsRect = document.getElementById('stats-card').getBoundingClientRect();
+        const ip = document.getElementById('right-pane');
+        const takeBtns = Array.from(document.querySelectorAll('#action-grid .take-btn')).map((b) => {
+          const r = b.getBoundingClientRect();
+          const cs = getComputedStyle(b);
+          return { text: b.textContent.trim(), bottom: r.bottom, height: r.height, lineHeight: parseFloat(cs.lineHeight) || 0 };
+        });
         return {
           attrW: cv.width,
           attrH: cv.height,
@@ -1429,6 +1830,10 @@ async function testMobileGame3Ring(browser, base) {
           hdrBottom,
           topRingTopY: topRing6.y - m.ringH / 2,
           pills,
+          infoScrollH: ip.scrollHeight,
+          infoClientH: ip.clientHeight,
+          innerH: window.innerHeight,
+          takeBtns,
           rightPillarScreen: {
             x: rect.left + m.padX + 6 * m.spacingX,
             y: rect.top + m.groundY - m.pillarH * 0.4,
@@ -1448,6 +1853,15 @@ async function testMobileGame3Ring(browser, base) {
       assert.ok(geo.m.platformLeft >= 0 && geo.m.platformLeft + geo.m.platformW <= geo.m.W, `4-mobile ${vp.label} platform inside X bounds`);
       assert.ok(geo.m.groundY + geo.m.platformH <= geo.m.H, `4-mobile ${vp.label} platform inside Y bounds`);
       assert.strictEqual(geo.pills.length, 7, `4-mobile ${vp.label} renders 7 pillar pills`);
+      if (vp.label === '320x568') {
+        assert.ok(
+          geo.infoScrollH <= geo.infoClientH + 1,
+          `4-mobile 320x568 numPillars=7 .info-pane fits without overflow (scrollH=${geo.infoScrollH}, clientH=${geo.infoClientH})`
+        );
+        for (const b of geo.takeBtns) {
+          assert.ok(b.bottom <= geo.innerH + 1, `4-mobile 320x568 take-btn "${b.text}" bottom (${b.bottom}) <= ${geo.innerH}`);
+        }
+      }
 
       // Wait for player turn
       await page.waitFor(() => currentTurn === 'player' && gameState === 'PLAYING', 5000);
@@ -1456,17 +1870,38 @@ async function testMobileGame3Ring(browser, base) {
       await page.mouseClickAt(geo.statsCenter.x, geo.statsCenter.y);
       assert.strictEqual(await page.eval(() => selectedCol), -1, `4-mobile ${vp.label} tapping #stats-card keeps selectedCol=-1`);
 
-      // Tapping rightmost pillar (col 6) on canvas selects pillar 6
+      // Tapping rightmost pillar (Pillar 7, col 6) on canvas selects pillar 6 & highlight box stays within [0, W] above groundY
+      await page.eval(() => { window.__highlightBoxes = []; });
       await page.mouseClickAt(geo.rightPillarScreen.x, geo.rightPillarScreen.y);
-      assert.strictEqual(await page.eval(() => selectedCol), 6, `4-mobile ${vp.label} canvas tap selects rightmost pillar 6`);
+      const p7Check = await page.eval(() => ({
+        selectedCol,
+        boxes: window.__highlightBoxes.slice(),
+        m: getSceneMetrics(),
+      }));
+      assert.strictEqual(p7Check.selectedCol, 6, `4-mobile ${vp.label} canvas tap selects rightmost pillar 6`);
+      assert.ok(p7Check.boxes.length >= 1, `4-mobile ${vp.label} drew Pillar 7 selection highlight box`);
+      const p7Box = p7Check.boxes[p7Check.boxes.length - 1];
+      assert.ok(p7Box.minX >= 0 && p7Box.maxX <= p7Check.m.W + 0.1, `4-mobile ${vp.label} Pillar 7 highlight X [${p7Box.minX}, ${p7Box.maxX}] within [0, ${p7Check.m.W}]`);
+      assert.ok(p7Box.minY >= 0 && p7Box.maxY <= p7Check.m.groundY + 0.1, `4-mobile ${vp.label} Pillar 7 highlight Y [${p7Box.minY}, ${p7Box.maxY}] above groundY (${p7Check.m.groundY})`);
 
       if (vp.label === '375x667' || vp.label === '844x390') {
         await page.screenshot(`mobile_${vp.label}_4_play`);
       }
 
-      // Pillar selector pill (柱 1) selects pillar 0 & move button executes turn
+      // Pillar selector pill (Pillar 1, col 0) selects pillar 0, highlight box stays within [0, W] above groundY & move button executes turn
+      await page.eval(() => { window.__highlightBoxes = []; });
       await page.clickSelector('#pillar-pills .pillar-pill[data-pillar-col="0"]');
-      assert.strictEqual(await page.eval(() => selectedCol), 0, `4-mobile ${vp.label} pillar pill selects pillar 0`);
+      const p1Check = await page.eval(() => ({
+        selectedCol,
+        boxes: window.__highlightBoxes.slice(),
+        m: getSceneMetrics(),
+      }));
+      assert.strictEqual(p1Check.selectedCol, 0, `4-mobile ${vp.label} pillar pill selects pillar 0`);
+      assert.ok(p1Check.boxes.length >= 1, `4-mobile ${vp.label} drew Pillar 1 selection highlight box`);
+      const p1Box = p1Check.boxes[p1Check.boxes.length - 1];
+      assert.ok(p1Box.minX >= 0 && p1Box.maxX <= p1Check.m.W + 0.1, `4-mobile ${vp.label} Pillar 1 highlight X [${p1Box.minX}, ${p1Box.maxX}] within [0, ${p1Check.m.W}]`);
+      assert.ok(p1Box.minY >= 0 && p1Box.maxY <= p1Check.m.groundY + 0.1, `4-mobile ${vp.label} Pillar 1 highlight Y [${p1Box.minY}, ${p1Box.maxY}] above groundY (${p1Check.m.groundY})`);
+
       const totalBeforeMove = await page.eval(() => columns.reduce((a, b) => a + b, 0));
       await page.clickSelector('#action-grid .take-btn:first-child');
       const totalAfterMove = await page.eval(() => columns.reduce((a, b) => a + b, 0));
@@ -1530,6 +1965,50 @@ async function testMobileGame3Ring(browser, base) {
     await endPage.waitFor(() => window.AppUI && document.getElementById('screen-games').classList.contains('active'), 10000);
   } finally {
     await endPage.close();
+  }
+
+  // Landscape 844x390 1-row End .overlay fit check
+  const landEnd3 = await browser.newPage(base, {
+    ua: iPhoneUA, width: 844, height: 390, screenW: 844, screenH: 390, dpr: 3, mobile: true, maxTouch: 5, coarse: true,
+  });
+  try {
+    await seedStorage(landEnd3, base, { session: STUDENT_4C7, usedMs: 0 });
+    await landEnd3.goto(`${base}/games/4-mobile.html?gameId=ring-nim`);
+    await landEnd3.waitFor(() => typeof window.endGame === 'function', 8000);
+    await landEnd3.clickSelector('#start-screen .mega-btn');
+    await landEnd3.waitFor(() => !document.getElementById('main-wrapper').classList.contains('hidden'), 5000);
+    await landEnd3.eval(() => endGame('player'));
+    await landEnd3.waitFor(() => !!document.querySelector('#game-over-screen .mgs-top10 tbody tr'), 5000);
+    const landEndCheck = await landEnd3.eval(() => {
+      const ov = document.getElementById('game-over-screen');
+      const hud = document.getElementById('mgs-hud').getBoundingClientRect();
+      const h1 = ov.querySelector('h1').getBoundingClientRect();
+      const rows = ov.querySelectorAll('.mgs-top10 tbody tr').length;
+      const btns = Array.from(ov.querySelectorAll('button')).map((b) => {
+        const r = b.getBoundingClientRect();
+        return { text: b.textContent.trim(), bottom: r.bottom, top: r.top, w: r.width, h: r.height };
+      }).filter((b) => b.w > 0 && b.h > 0);
+      return {
+        scrollH: ov.scrollHeight,
+        clientH: ov.clientHeight,
+        h1Top: h1.top,
+        hudBottom: hud.bottom,
+        rows,
+        btns,
+      };
+    });
+    assert.strictEqual(landEndCheck.rows, 1, '4-mobile 844x390 end has 1 Top10 row');
+    assert.ok(landEndCheck.h1Top >= landEndCheck.hudBottom - 1, '4-mobile 844x390 end h1 >= hud');
+    assert.ok(landEndCheck.scrollH <= landEndCheck.clientH + 1, `4-mobile 844x390 end overlay scrollH (${landEndCheck.scrollH}) <= clientH (${landEndCheck.clientH})`);
+    assert.ok(landEndCheck.btns.some((b) => b.text.includes('再次挑戰')), '4-mobile 844x390 end has Replay button');
+    assert.ok(landEndCheck.btns.some((b) => b.text.includes('返回遊戲大廳')), '4-mobile 844x390 end has Lobby button');
+    for (const b of landEndCheck.btns) {
+      assert.ok(b.bottom <= 390 + 0.5, `4-mobile 844x390 end CTA "${b.text}" bottom (${b.bottom}) <= 390`);
+    }
+    await landEnd3.screenshot('mobile_844x390_4_end');
+    assert.deepStrictEqual(landEnd3._errors, [], 'no page errors on 4-mobile 844x390 end');
+  } finally {
+    await landEnd3.close();
   }
 
   console.log('[PASS] Game 3 (4-mobile.html) across 4 viewports + roundRect fallback/7-pillar geometry/taps/timers/end');

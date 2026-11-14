@@ -470,6 +470,20 @@
             0%, 100% { background: rgba(250, 204, 21, 0.2); }
             50% { background: rgba(250, 204, 21, 0.4); }
         }
+        @media (orientation: landscape) and (max-height: 500px) {
+            .overlay { padding: 6px calc(16px + env(safe-area-inset-right)) 8px calc(16px + env(safe-area-inset-left)); }
+            .overlay-card { max-width: 680px; gap: 6px; }
+            .overlay h1 { font-size: 1.35rem; line-height: 1.15; }
+            .mgs-player-tag { font-size: 0.88rem; padding: 3px 12px; }
+            .rules-note { font-size: 0.82rem; padding: 6px 12px; line-height: 1.3; }
+            .btn-row { gap: 8px; margin-top: 2px; }
+            .mega-btn { min-height: 44px; padding: 8px 18px; font-size: 0.98rem; border-radius: 12px; }
+            .leaderboard-box { padding: 6px 10px; }
+            .leaderboard-box h2 { font-size: 1rem; margin: 0 0 4px 0; }
+            .top10-badge { padding: 2px 10px; font-size: 0.8rem; }
+            .mgs-top10 { font-size: 0.84rem; }
+            .mgs-top10 td, .mgs-top10 th { padding: 2px 6px; }
+        }
     </style>
 </head>
 <body>
