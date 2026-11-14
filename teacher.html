@@ -1231,8 +1231,8 @@
           // Pull newest Sheet TS before issuing reset when online so TS stays strictly monotonic
           const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
           if (!window.__BYPASS_SHEET_SYNC__ && isOnline && typeof window.syncAllProfilesFromSheet === 'function' && (Date.now() - lastPwdCloudSyncAt > 10000)) {
-            await window.syncAllProfilesFromSheet().then(function () {
-              lastPwdCloudSyncAt = Date.now();
+            await window.syncAllProfilesFromSheet().then(function (r) {
+              if (r && r.success) lastPwdCloudSyncAt = Date.now();
             }).catch(function () {});
           }
 

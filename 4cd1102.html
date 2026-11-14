@@ -14230,7 +14230,9 @@ window.ADMIN_STUDENT_PASSWORDS = {
 
     const salt = derivePasswordSalt(cid, sid);
     const hash = hashPassword(pwdStr, salt);
-    const now = Date.now();
+    const prevRec = getStudentPasswordRecord(cid, sid);
+    const prevTs = (prevRec && Number(prevRec.updatedAt)) || 0;
+    const now = Math.max(Date.now(), prevTs + 1000);
     const record = {
       classID: cid,
       studentID: sid,
@@ -14243,6 +14245,17 @@ window.ADMIN_STUDENT_PASSWORDS = {
     if (typeof localStorage !== 'undefined') {
       try {
         localStorage.setItem(`math_student_password_${cid}_${sid}`, JSON.stringify(record));
+        const adminPasswords = (typeof window !== 'undefined' && window.ADMIN_STUDENT_PASSWORDS) ||
+                               (typeof globalThis !== 'undefined' && globalThis.ADMIN_STUDENT_PASSWORDS) ||
+                               (typeof self !== 'undefined' && self.ADMIN_STUDENT_PASSWORDS);
+        if (adminPasswords && typeof adminPasswords === 'object') {
+          adminPasswords[`${cid}_${sid}`] = {
+            salt: salt,
+            hash: hash,
+            passwordChanged: !!passwordChanged,
+            updatedAt: now
+          };
+        }
         // Also update student profile if present
         const profKey = PERSISTENCE_CONFIG.profilePrefix + `${cid}_${sid}`;
         const rawProf = localStorage.getItem(profKey);

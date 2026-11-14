@@ -2826,7 +2826,8 @@ function saveStudentPassword(classID, studentID, newPassword, passwordChanged) {
     hash = pwdStr;
   }
 
-  const now = Date.now();
+  const prevTs = (existingRec && Number(existingRec.updatedAt)) || 0;
+  const now = Math.max(Date.now(), prevTs + 1000);
   const newChangeCount = passwordChanged ? (currentChangeCount + 1) : currentChangeCount;
   const record = {
     classID: cid,
@@ -2841,9 +2842,13 @@ function saveStudentPassword(classID, studentID, newPassword, passwordChanged) {
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(`math_student_password_${cid}_${sid}`, JSON.stringify(record));
-      if (window.ADMIN_STUDENT_PASSWORDS && window.ADMIN_STUDENT_PASSWORDS[`${cid}_${sid}`]) {
-        window.ADMIN_STUDENT_PASSWORDS[`${cid}_${sid}`].passwordChanged = !!passwordChanged;
-        window.ADMIN_STUDENT_PASSWORDS[`${cid}_${sid}`].hash = hash;
+      if (window.ADMIN_STUDENT_PASSWORDS && typeof window.ADMIN_STUDENT_PASSWORDS === 'object') {
+        window.ADMIN_STUDENT_PASSWORDS[`${cid}_${sid}`] = {
+          salt: salt,
+          hash: hash,
+          passwordChanged: !!passwordChanged,
+          updatedAt: now
+        };
       }
     } catch (e) {
       console.warn("[Persistence] Failed to write password to localStorage:", e);
@@ -2855,8 +2860,8 @@ function saveStudentPassword(classID, studentID, newPassword, passwordChanged) {
     window.submitFormRecord({
       classID: cid,
       studentID: sid,
-      dateID: `PWD_UPDATE_V1|TS:${now}`,
-      scoreTag: `PWD_HASH_${hash.substring(0, 8)}`,
+      dateID: `PWD|HASH:${hash}|SALT:${salt}|CHANGED:${record.passwordChanged ? 1 : 0}|TS:${now}`,
+      scoreTag: record.passwordChanged ? "PASSWORD_UPDATE" : "PASSWORD_INIT",
       timestamp: now
     }).catch(function(err) {
       console.warn('[Password] Form submit notice:', err);

@@ -4,6 +4,7 @@
  */
 const assert = require('assert');
 const fs = require('fs');
+const path = require('path');
 const { execSync } = require('child_process');
 
 const config = require('../core/config.js');
@@ -219,7 +220,7 @@ async function runAllTests() {
   // 9. A1 Gate Upgrade: Preloaded Custom Passwords, Teacher Keys, Face Candidate Disambiguation & Face Trace Exemption
   assert.strictEqual(Object.keys(auth.STUDENT_CUSTOM_PASSWORDS).length, 121, 'All 121 student password records hydrated');
   const changedCount = Object.values(auth.STUDENT_CUSTOM_PASSWORDS).filter(r => r && r.passwordChanged).length;
-  assert.strictEqual(changedCount, 59, 'All 59 non-1234 student custom passwords preserved');
+  assert.strictEqual(changedCount, 60, 'All 60 non-1234 student custom passwords preserved');
 
   // Default 1234 must be rejected
   assert.strictEqual(await auth.verifyStudentCustomPassword('4C', 1, '1234'), false, 'Default 1234 password must be rejected');
@@ -728,7 +729,90 @@ async function runAllTests() {
   }
   console.log('[PASS] 12. Teacher Student Password Reset, Clock-Skew Monotonicity, Cross-Device Sync & Self-Service Update');
 
-  console.log('=== ALL TESTS PASSED (12/12) ===');
+  // 13. Cross-browser 5B_2 login, Sheet PWD parsing resilience, legacy sync parity & failed-sync retry guards
+  {
+    const lsMap13 = new Map();
+    const origLS13 = globalThis.localStorage;
+    const origFetch13 = globalThis.fetch;
+    globalThis.localStorage = {
+      getItem: k => (lsMap13.has(String(k)) ? lsMap13.get(String(k)) : null),
+      setItem: (k, v) => { lsMap13.set(String(k), String(v)); },
+      removeItem: k => { lsMap13.delete(String(k)); },
+      clear: () => { lsMap13.clear(); },
+      key: i => Array.from(lsMap13.keys())[i] || null,
+      get length() { return lsMap13.size; }
+    };
+    try {
+      // Fresh browser login for 5B #2 with 1111123 (zero localStorage)
+      assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 2, '1234'), false, '5B_2 must reject default 1234 on fresh browser');
+      assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 2, '1111123'), true, '5B_2 must verify 1111123 on fresh browser');
+      const sess5b2 = await auth.loginStudent({ classID: '5B', studentID: 2, secretKey: '1111123' });
+      assert.strictEqual(sess5b2.sid, '5B_2');
+      assert.strictEqual(sess5b2.name, '蘇子恩');
+
+      // Resilient Sheet PWD parsing (whitespace-padded dateID, missing CHANGED with PASSWORD_UPDATE score, Timestamp fallback, CORS cache fallback)
+      const persistence = require('../js/persistence.js');
+      const altSalt = 'MATH_SALT_5B_3';
+      const altHash = await cryptoMod.sha256Hex(altSalt + ':445566');
+      const orig5B3 = auth.STUDENT_CUSTOM_PASSWORDS['5B_3'] ? Object.assign({}, auth.STUDENT_CUSTOM_PASSWORDS['5B_3']) : null;
+      try {
+        let getCalls = 0;
+        globalThis.fetch = async (url, opts) => {
+          if (String(url) === persistence.PERSISTENCE_CONFIG.gasSheetReaderUrl) {
+            getCalls++;
+            if (opts && opts.cache === 'no-store') {
+              throw new TypeError('CORS preflight blocked');
+            }
+            return {
+              ok: true,
+              json: async () => ({
+                data: [{
+                  classID: ' 5b ',
+                  studentID: '3',
+                  dateID: `  PWD|HASH:${altHash.toUpperCase()}|SALT:${altSalt}  `,
+                  score: 'PASSWORD_UPDATE',
+                  Timestamp: '2026-11-14T08:00:00Z'
+                }]
+              })
+            };
+          }
+          return { ok: true };
+        };
+        const sync13 = await persistence.syncAllProfilesFromSheet();
+        assert.strictEqual(sync13.success, true);
+        assert.strictEqual(getCalls, 2, 'syncAllProfilesFromSheet must retry without cache:no-store if primary CORS fetch throws');
+        assert.ok(sync13.pwdStudents.includes('5B_3'), 'Trimmed PWD| row with PASSWORD_UPDATE & Timestamp fallback must sync');
+        assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 3, '445566'), true);
+      } finally {
+        if (orig5B3) auth.STUDENT_CUSTOM_PASSWORDS['5B_3'] = orig5B3;
+      }
+
+      // Static source guards across persistence.js, app.html, teacher.html, 5BC1102.html, 4cd1102.html
+      const persistSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'persistence.js'), 'utf8');
+      assert.ok(persistSrc.includes('controller.abort(); }, 45000)'), 'syncAllProfilesFromSheet must allow 45s for GAS cold start');
+      assert.ok(persistSrc.includes('controller.abort(); }, 8000)'), 'submitFormRecord must allow 8s before aborting');
+
+      const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.html'), 'utf8');
+      assert.ok(appSrc.includes('let lastSheetSyncOk = false;'), 'app.html must track lastSheetSyncOk');
+      assert.ok(appSrc.includes('!lastSheetSyncOk || (Date.now() - lastSheetSyncAt > 1500)'), 'handleGateLogin must retry if prior sync failed');
+
+      const teacherSrc = fs.readFileSync(path.join(__dirname, '..', 'teacher.html'), 'utf8');
+      assert.ok(teacherSrc.includes('if (r && r.success) lastPwdCloudSyncAt = Date.now();'), 'teacher.html must only cache cloud sync time on success');
+
+      const p5bcSrc = fs.readFileSync(path.join(__dirname, '..', '5BC1102.html'), 'utf8');
+      assert.ok(p5bcSrc.includes('dateID: `PWD|HASH:${hash}|SALT:${salt}|CHANGED:${record.passwordChanged ? 1 : 0}|TS:${now}`'), '5BC1102.html must emit standard PWD|HASH payload');
+      assert.ok(!p5bcSrc.includes('PWD_UPDATE_V1|TS:'), '5BC1102.html must not emit legacy unparseable PWD_UPDATE_V1 format');
+
+      const p4cdSrc = fs.readFileSync(path.join(__dirname, '..', '4cd1102.html'), 'utf8');
+      assert.ok(p4cdSrc.includes('const now = Math.max(Date.now(), prevTs + 1000);'), '4cd1102.html saveStudentPassword must use monotonic timestamp');
+    } finally {
+      globalThis.localStorage = origLS13;
+      globalThis.fetch = origFetch13;
+    }
+  }
+  console.log('[PASS] 13. Cross-Browser 5B_2 Login, Sheet PWD Parsing Resilience & Sync Guards');
+
+  console.log('=== ALL TESTS PASSED (13/13) ===');
 }
 
 runAllTests().catch(err => {

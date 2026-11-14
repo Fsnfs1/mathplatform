@@ -474,6 +474,7 @@
       let initialSheetSyncPromise = null;
       let initialSheetSyncDone = false;
       let lastSheetSyncAt = 0;
+      let lastSheetSyncOk = false;
 
       function esc(str) {
         return String(str == null ? '' : str)
@@ -506,11 +507,17 @@
             initialSheetSyncPromise = window.syncAllProfilesFromSheet()
               .then(function (r) {
                 initialSheetSyncDone = true;
-                lastSheetSyncAt = Date.now();
+                if (r && r.success) {
+                  lastSheetSyncAt = Date.now();
+                  lastSheetSyncOk = true;
+                } else {
+                  lastSheetSyncOk = false;
+                }
                 return r;
               })
               .catch(function () {
                 initialSheetSyncDone = true;
+                lastSheetSyncOk = false;
                 return { success: false, count: 0, students: [] };
               });
           }
@@ -622,6 +629,9 @@
           }
           if (window.MathCoreSync && typeof MathCoreSync.flushNow === 'function') {
             await MathCoreSync.flushNow();
+          }
+          if (window.OfflineSyncManager && typeof OfflineSyncManager.flushQueue === 'function') {
+            await OfflineSyncManager.flushQueue(true);
           }
         } catch (e) {}
         refreshTopBadges();
@@ -1147,10 +1157,15 @@
               if (initialSheetSyncPromise && !initialSheetSyncDone) {
                 await initialSheetSyncPromise;
               }
-              if (Date.now() - lastSheetSyncAt > 1500) {
-                await window.syncAllProfilesFromSheet();
+              if (!lastSheetSyncOk || (Date.now() - lastSheetSyncAt > 1500)) {
+                const syncRes = await window.syncAllProfilesFromSheet();
                 initialSheetSyncDone = true;
-                lastSheetSyncAt = Date.now();
+                if (syncRes && syncRes.success) {
+                  lastSheetSyncAt = Date.now();
+                  lastSheetSyncOk = true;
+                } else {
+                  lastSheetSyncOk = false;
+                }
               }
               const retryResult = await tryGatePass();
               finishGateLogin(retryResult);
@@ -1191,6 +1206,9 @@
           MathCoreSync.flushNow().then(refreshTopBadges).catch(refreshTopBadges);
         } else {
           refreshTopBadges();
+        }
+        if (window.OfflineSyncManager && typeof OfflineSyncManager.flushQueue === 'function' && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+          OfflineSyncManager.flushQueue().catch(function () {});
         }
 
         // Sync D6 consent switch with stored status
@@ -2508,10 +2526,15 @@
           }
 
           let oldOk = await checkOldCredential();
-          if (!oldOk && !window.__BYPASS_SHEET_SYNC__ && typeof window.syncAllProfilesFromSheet === 'function' && (Date.now() - lastSheetSyncAt > 1500)) {
-            await window.syncAllProfilesFromSheet().catch(function () {});
+          if (!oldOk && !window.__BYPASS_SHEET_SYNC__ && typeof window.syncAllProfilesFromSheet === 'function' && (!lastSheetSyncOk || Date.now() - lastSheetSyncAt > 1500)) {
+            const syncRes = await window.syncAllProfilesFromSheet().catch(function () { return { success: false }; });
             initialSheetSyncDone = true;
-            lastSheetSyncAt = Date.now();
+            if (syncRes && syncRes.success) {
+              lastSheetSyncAt = Date.now();
+              lastSheetSyncOk = true;
+            } else {
+              lastSheetSyncOk = false;
+            }
             oldOk = await checkOldCredential();
           }
 
@@ -2532,7 +2555,6 @@
           const pendingCount = (window.OfflineSyncManager && typeof OfflineSyncManager.getStatus === 'function')
             ? OfflineSyncManager.getStatus().pendingCount
             : 0;
-          lastSheetSyncAt = Date.now();
 
           if (oldInp) oldInp.value = '';
           if (newInp) newInp.value = '';

@@ -719,17 +719,35 @@
     const gasUrl = PERSISTENCE_CONFIG.gasSheetReaderUrl;
     if (!gasUrl) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timeoutId = controller ? setTimeout(function () { controller.abort(); }, 5000) : null;
+    const timeoutId = controller ? setTimeout(function () { controller.abort(); }, 45000) : null;
     try {
-      const response = await fetch(gasUrl, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-store',
-        signal: controller ? controller.signal : undefined
-      });
+      let response;
+      try {
+        response = await fetch(gasUrl, {
+          method: 'GET',
+          mode: 'cors',
+          redirect: 'follow',
+          cache: 'no-store',
+          signal: controller ? controller.signal : undefined
+        });
+      } catch (primaryErr) {
+        if (primaryErr && primaryErr.name === 'AbortError') throw primaryErr;
+        // Fallback without cache:'no-store' in case a browser/proxy rejects cache headers on CORS redirects
+        response = await fetch(gasUrl, {
+          method: 'GET',
+          mode: 'cors',
+          redirect: 'follow',
+          signal: controller ? controller.signal : undefined
+        });
+      }
       if (timeoutId) clearTimeout(timeoutId);
-      if (!response.ok) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
-      const rows = await response.json();
+      if (!response || !response.ok) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
+      const rawJson = await response.json();
+      const rows = Array.isArray(rawJson)
+        ? rawJson
+        : (rawJson && Array.isArray(rawJson.data)
+            ? rawJson.data
+            : (rawJson && Array.isArray(rawJson.rows) ? rawJson.rows : null));
       if (!Array.isArray(rows)) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
 
       let syncedCount = 0;
@@ -742,7 +760,7 @@
       // Group face vector & password records by student to find their latest entries
       rows.forEach(function (r) {
         if (!r) return;
-        const did = String(r.dateID || "");
+        const did = String(r.dateID || "").trim();
         if (did.startsWith("PWD|")) {
           const cid = String(r.classID || "").trim().toUpperCase();
           const sid = parseInt(r.studentID, 10);
@@ -751,11 +769,18 @@
           const saltMatch = did.match(/SALT:([^|]+)/);
           const changedMatch = did.match(/CHANGED:([^|]+)/);
           const tsMatch = did.match(/TS:(\d+)/);
+          const scoreTagUpper = String(r.score || r.scoreTag || "").trim().toUpperCase();
           if (hashMatch) {
-            const h = String(hashMatch[1]).toLowerCase();
-            const s = saltMatch ? saltMatch[1] : derivePasswordSalt(cid, sid);
-            const ch = changedMatch ? (changedMatch[1] === "1" || changedMatch[1] === "true") : false;
-            const ts = tsMatch ? Number(tsMatch[1]) : 0;
+            const h = String(hashMatch[1]).trim().toLowerCase();
+            const s = saltMatch ? saltMatch[1].trim() : derivePasswordSalt(cid, sid);
+            const ch = changedMatch
+              ? (changedMatch[1].trim() === "1" || changedMatch[1].trim() === "true")
+              : (scoreTagUpper === "PASSWORD_UPDATE");
+            let ts = tsMatch ? Number(tsMatch[1]) : 0;
+            if (!ts && r.Timestamp) {
+              const parsedTs = Date.parse(r.Timestamp);
+              if (!isNaN(parsedTs) && parsedTs > 0) ts = parsedTs;
+            }
             const pk = `${cid}_${sid}`;
             const prevPwd = pwdMap[pk];
             if (!prevPwd || ts > prevPwd.ts || (ts === prevPwd.ts && ch && !prevPwd.ch)) {
@@ -969,7 +994,7 @@
 
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutId = controller ? setTimeout(function () { controller.abort(); }, 3500) : null;
+      const timeoutId = controller ? setTimeout(function () { controller.abort(); }, 8000) : null;
       const bodyParams = new URLSearchParams(payload);
       await fetch(PERSISTENCE_CONFIG.googleFormUrl, {
         method: "POST",
@@ -1272,7 +1297,7 @@
           if (controller) {
             timeoutId = setTimeout(function () {
               try { controller.abort(); } catch (e) {}
-            }, 3500);
+            }, 8000);
           }
 
           try {
