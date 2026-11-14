@@ -555,7 +555,7 @@
       });
 
       const board = getLocalJson(this._boardKey(gameId), []);
-      board.push({
+      const newEntry = {
         sid: sid,
         classID: stu.classID,
         studentID: stu.studentID,
@@ -565,10 +565,13 @@
         durationMs: durationMs,
         dateStr: getMacauDateParts().dateStr,
         ts: Date.now(),
-      });
+      };
+      board.push(newEntry);
       board.sort((a, b) => b.score - a.score || a.durationMs - b.durationMs);
-      const top10 = board.slice(0, 10);
-      setLocalJson(this._boardKey(gameId), top10);
+      setLocalJson(this._boardKey(gameId), board.slice(0, 10));
+      // Upload to Google Form so every device sees it (only meaningful scores)
+      if (finalScore > 0) this._postRemote(Object.assign({ gameId: gameId }, newEntry));
+      const top10 = this.getTop10(gameId);
 
       const inTop10 = top10.some(item => item.sid === sid && item.score === finalScore && finalScore > 0);
       let awardRes = null;
@@ -624,7 +627,101 @@
     },
 
     getTop10: function (gameId) {
-      return getLocalJson(this._boardKey(gameId || 'trig-ratio'), []);
+      const gid = gameId || 'trig-ratio';
+      const local = getLocalJson(this._boardKey(gid), []);
+      const remote = getLocalJson(this._remoteBoardKey(gid), []);
+      return this._mergeBoards(local, remote);
+    },
+
+    // ---------------------------------------------------------------------
+    // Cross-device cloud leaderboard (Google Form write + GAS Sheet read)
+    // Row format: classID, studentID, dateID = "GAME|<gameId>|S:<score>|D:<ms>|W:<0|1>|T:<ts>|N:<name>",
+    // score = "GAME_SCORE". (Deliberately avoids "|TS:" so face-vector sync ignores these rows.)
+    // ---------------------------------------------------------------------
+    _remoteBoardKey: function (gameId) {
+      return 'MP_V2_GAMEBOARD_REMOTE_' + String(gameId || 'trig-ratio');
+    },
+
+    _mergeBoards: function (a, b) {
+      const seen = {};
+      const all = [];
+      (a || []).concat(b || []).forEach(function (r) {
+        if (!r || !r.classID) return;
+        const k = String(r.classID).toUpperCase() + '_' + r.studentID + '_' + Number(r.score || 0) + '_' + Number(r.ts || 0);
+        if (seen[k]) return;
+        seen[k] = true;
+        all.push(r);
+      });
+      all.sort(function (x, y) {
+        return (Number(y.score || 0) - Number(x.score || 0)) || (Number(x.durationMs || 0) - Number(y.durationMs || 0));
+      });
+      return all.slice(0, 10);
+    },
+
+    _postRemote: function (entry) {
+      try {
+        const formUrl = CONFIG && CONFIG.endpoints && CONFIG.endpoints.googleFormUrl;
+        const f = CONFIG && CONFIG.endpoints && CONFIG.endpoints.formFields;
+        if (!formUrl || !f || typeof fetch !== 'function') return;
+        const name = String(entry.name || '').replace(/\|/g, ' ');
+        const dateID = 'GAME|' + entry.gameId + '|S:' + entry.score + '|D:' + entry.durationMs +
+          '|W:' + (entry.win ? 1 : 0) + '|T:' + entry.ts + '|N:' + name;
+        const body = new URLSearchParams();
+        body.set(f.classID, entry.classID);
+        body.set(f.studentID, String(entry.studentID));
+        body.set(f.dateID, dateID);
+        body.set(f.score, 'GAME_SCORE');
+        fetch(formUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+          keepalive: true,
+        }).catch(function () {});
+      } catch (e) {}
+    },
+
+    /** Fetch all GAME rows from the Sheet, cache per game, return merged top10 for gameId. */
+    syncRemoteBoard: function (gameId) {
+      const self = this;
+      const gasUrl = CONFIG && CONFIG.endpoints && CONFIG.endpoints.gasSheetReaderUrl;
+      if (!gasUrl || typeof fetch !== 'function') return Promise.resolve(self.getTop10(gameId));
+      return fetch(gasUrl, { method: 'GET', mode: 'cors', redirect: 'follow', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (json) {
+          const rows = Array.isArray(json) ? json : (json && (json.data || json.rows)) || [];
+          const byGame = {};
+          rows.forEach(function (r) {
+            const did = String((r && r.dateID) || '');
+            if (did.indexOf('GAME|') !== 0) return;
+            const parts = did.split('|');
+            const gid = parts[1];
+            const kv = {};
+            parts.slice(2).forEach(function (p) {
+              const i = p.indexOf(':');
+              if (i > 0) kv[p.slice(0, i)] = p.slice(i + 1);
+            });
+            const cid = String(r.classID || '').trim().toUpperCase();
+            const stuId = String(r.studentID || '').trim();
+            if (!gid || !cid || !stuId) return;
+            (byGame[gid] = byGame[gid] || []).push({
+              sid: cid + '_' + stuId,
+              classID: cid,
+              studentID: isNaN(Number(stuId)) ? stuId : Number(stuId),
+              name: kv.N || (cid + '_' + stuId),
+              score: Number(kv.S || 0),
+              win: kv.W === '1',
+              durationMs: Number(kv.D || 0),
+              ts: Number(kv.T || 0),
+              remote: true,
+            });
+          });
+          Object.keys(byGame).forEach(function (gid) {
+            setLocalJson(self._remoteBoardKey(gid), self._mergeBoards(byGame[gid], []));
+          });
+          return self.getTop10(gameId);
+        })
+        .catch(function () { return self.getTop10(gameId); });
     },
   };
 

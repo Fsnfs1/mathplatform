@@ -450,7 +450,7 @@
   <script src="core/ui.js"></script>
   <script src="core/content.js"></script>
   <script src="core/engine.js"></script>
-  <script src="core/bonus.js"></script>
+  <script src="core/bonus.js?v=20261114c"></script>
   <script src="js/persistence.js"></script>
 
   <script>
@@ -2796,8 +2796,13 @@
         openGamesApp();
       }
 
-      function renderGamesLeaderboard(gameId) {
+      function renderGamesLeaderboard(gameId, skipRemote) {
         const top10 = MathCoreBonus.GameBridge.getTop10(gameId);
+        if (!skipRemote && typeof MathCoreBonus.GameBridge.syncRemoteBoard === 'function') {
+          MathCoreBonus.GameBridge.syncRemoteBoard(gameId).then(function () {
+            renderGamesLeaderboard(gameId, true);
+          }).catch(function () {});
+        }
         const box = document.getElementById('gameLeaderboardBox');
         box.innerHTML = top10.length === 0
           ? `<div class="text-muted small">【${esc(gameId)}】暫無今日排行記錄，快來拿下第一名！</div>`

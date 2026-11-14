@@ -381,7 +381,9 @@
     if (locked) return;
     let st;
     const b = bridge();
-    if (gameActive && doc.visibilityState !== 'hidden') {
+    // Anti-addiction: count down the whole time the game page is open & visible
+    // (same behaviour as the desktop iframe tracker), not only during a round.
+    if (doc.visibilityState !== 'hidden') {
       st = b ? b.recordPlayDuration(sid, delta) : _localTick(delta);
     } else {
       st = b ? b.getPlaytimeStatus(sid) : _localStatus();
@@ -403,7 +405,7 @@
       clearInterval(timerId);
       timerId = null;
     }
-    if (flush && !locked && gameActive && lastTick && doc.visibilityState !== 'hidden') {
+    if (flush && !locked && lastTick && doc.visibilityState !== 'hidden') {
       const delta = Math.min(5000, Math.max(0, Date.now() - lastTick));
       if (delta > 0) bridge().recordPlayDuration(sid, delta);
     }
@@ -503,6 +505,11 @@
       }
       if (st.warn) showWarn();
       startTimer();
+      // Pull the cross-device leaderboard from Google Sheet so getTop10() includes other devices
+      try {
+        const gb = bridge();
+        if (gb && typeof gb.syncRemoteBoard === 'function' && opts.gameId) gb.syncRemoteBoard(opts.gameId);
+      } catch (e) {}
       doc.addEventListener('visibilitychange', onVisibility);
       root.addEventListener('pagehide', function () {
         stopTimer(true);
