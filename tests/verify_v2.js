@@ -582,7 +582,153 @@ async function runAllTests() {
   }
   console.log('[PASS] 11. Unified 4cd1102 Face Bootstrap, Legacy Vector/Password Compatibility & Sync Protection');
 
-  console.log('=== ALL TESTS PASSED (11/11) ===');
+  // 12. Teacher Student Password Reset, Clock-Skew Monotonicity, Cross-Device Sheet Sync & Student Self-Update
+  assert.ok(teacherHtml.includes('id="secPasswordReset"'), 'teacher.html must render #secPasswordReset panel');
+  assert.ok(teacherHtml.includes('id="navBtnPwdReset"'), 'teacher.html must render #navBtnPwdReset quick link');
+  assert.ok(teacherHtml.includes('js/persistence.js'), 'teacher.html must load js/persistence.js');
+  assert.ok(
+    teacherHtml.indexOf('js/persistence.js') > teacherHtml.indexOf('core/auth.js'),
+    'teacher.html must load js/persistence.js after core/auth.js'
+  );
+  assert.ok(
+    teacherHtml.includes("document.getElementById('secPasswordReset').classList.toggle('d-none', !isTeacher)"),
+    'teacher.html must restrict #secPasswordReset exclusively to teacher role'
+  );
+  assert.ok(
+    teacherHtml.includes("navToggle('navBtnPwdReset', isTeacher)"),
+    'teacher.html must hide #navBtnPwdReset from class_rep users'
+  );
+  assert.ok(
+    teacherHtml.includes("resetSelectedStudentPassword()") && teacherHtml.includes("if (!ensureTeacherAuth('teacher_only')) return;"),
+    'teacher.html password reset actions must be guarded by ensureTeacherAuth(teacher_only)'
+  );
+  assert.ok(!teacherHtml.includes('test98'), 'teacher.html must not embed plaintext test98 password');
+  assert.ok(
+    !teacherHtml.includes('洪佳佳') && !teacherHtml.includes('周梓霖') && !teacherHtml.includes('高尚禮') && !teacherHtml.includes('柯鈺鑫'),
+    'teacher.html must not hardcode student real names in static HTML'
+  );
+
+  assert.ok(appHtml.includes('id="btnOpenChangePwd"'), 'app.html must include student change-password button');
+  assert.ok(appHtml.includes('id="modalChangeStudentPassword"'), 'app.html must include student change-password modal');
+  assert.ok(appHtml.includes('openChangePasswordModal') && appHtml.includes('submitChangeStudentPassword'), 'app.html must expose self-service password update functions');
+  assert.ok(appHtml.includes('canRetryCloudSync') && appHtml.includes('window.syncAllProfilesFromSheet()'), 'app.html gate login must retry after cloud sync on cache race/reset');
+  assert.ok(!appHtml.includes('洪佳佳') && !appHtml.includes('周梓霖') && !appHtml.includes('高尚禮') && !appHtml.includes('柯鈺鑫'), 'app.html must stay free of student real names');
+  assert.ok(!appHtml.includes('test98') && !appHtml.includes('x33c') && !appHtml.includes('4D01-4ZXP'), 'app.html must stay free of plaintext secrets');
+
+  const origLS12 = globalThis.localStorage;
+  const origFetch12 = globalThis.fetch;
+  const origDateNow12 = Date.now;
+  const origGetRoster12 = globalThis.getRoster;
+  const origGetStudent12 = globalThis.getStudent;
+  const origGetStudentName12 = globalThis.getStudentName;
+  const orig5B1Snap = auth.STUDENT_CUSTOM_PASSWORDS['5B_1'] ? Object.assign({}, auth.STUDENT_CUSTOM_PASSWORDS['5B_1']) : null;
+
+  const lsMap12 = new Map();
+  globalThis.localStorage = {
+    getItem: k => (lsMap12.has(String(k)) ? lsMap12.get(String(k)) : null),
+    setItem: (k, v) => { lsMap12.set(String(k), String(v)); },
+    removeItem: k => { lsMap12.delete(String(k)); },
+    clear: () => { lsMap12.clear(); },
+    key: i => Array.from(lsMap12.keys())[i] || null,
+    get length() { return lsMap12.size; }
+  };
+
+  try {
+    globalThis.getRoster = rosterMod.getRoster;
+    globalThis.getStudent = rosterMod.getStudent;
+    globalThis.getStudentName = rosterMod.getStudentName;
+
+    const persistence = require('../js/persistence.js');
+    assert.ok(orig5B1Snap && orig5B1Snap.updatedAt > 1700000000000, '5B_1 must have bundled updatedAt snapshot timestamp');
+
+    // Simulate teacher machine clock lagging behind bundled Oct 2026 timestamp -> timestamp must stay strictly monotonic
+    Date.now = () => 1700000000000;
+    const postedPayloads = [];
+    globalThis.fetch = async (url, opts) => {
+      postedPayloads.push({ url, method: opts && opts.method, body: opts && opts.body });
+      return { ok: true, json: async () => [] };
+    };
+
+    const resetRes = persistence.saveStudentPassword('5B', 1, '739204', true);
+    assert.strictEqual(resetRes.success, true, 'Teacher reset with 6-digit PIN must succeed');
+    assert.strictEqual(await resetRes.syncPromise, true, 'Google Form submission promise must resolve true');
+    assert.strictEqual(resetRes.record.updatedAt, orig5B1Snap.updatedAt + 1000, 'Reset timestamp must advance strictly past stored updatedAt despite skewed clock');
+    assert.strictEqual(postedPayloads.length, 1, 'Teacher reset must emit exactly one Form POST payload');
+
+    const formParams = new URLSearchParams(postedPayloads[0].body);
+    const postedClass = formParams.get(persistence.PERSISTENCE_CONFIG.formFields.classID);
+    const postedSid = formParams.get(persistence.PERSISTENCE_CONFIG.formFields.studentID);
+    const postedDateId = formParams.get(persistence.PERSISTENCE_CONFIG.formFields.dateID);
+    const postedTag = formParams.get(persistence.PERSISTENCE_CONFIG.formFields.score);
+    assert.strictEqual(postedClass, '5B');
+    assert.strictEqual(postedSid, '1');
+    assert.strictEqual(postedTag, 'PASSWORD_UPDATE');
+    assert.ok(
+      postedDateId.startsWith('PWD|HASH:') && postedDateId.includes('|CHANGED:1|TS:' + (orig5B1Snap.updatedAt + 1000)),
+      'Form payload dateID must serialize monotonic PWD record'
+    );
+
+    // Simulate a brand-new student device (empty localStorage, original snapshot untouched)
+    lsMap12.clear();
+    auth.STUDENT_CUSTOM_PASSWORDS['5B_1'] = Object.assign({}, orig5B1Snap);
+    assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 1, '739204'), false, 'Fresh student device must not validate reset PIN before Sheet sync');
+
+    globalThis.fetch = async (url, opts) => {
+      if (String(url) === persistence.PERSISTENCE_CONFIG.gasSheetReaderUrl) {
+        return {
+          ok: true,
+          json: async () => [{ classID: '5B', studentID: 1, dateID: postedDateId }]
+        };
+      }
+      postedPayloads.push({ url, method: opts && opts.method, body: opts && opts.body });
+      return { ok: true };
+    };
+
+    const cloudSyncRes = await persistence.syncAllProfilesFromSheet();
+    assert.strictEqual(cloudSyncRes.success, true);
+    assert.ok(cloudSyncRes.pwdCount >= 1 && cloudSyncRes.pwdStudents.includes('5B_1'), 'Cloud sync must report updated password for 5B_1');
+    assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 1, '739204'), true, 'Student new device must accept teacher-reset PIN after Sheet sync');
+    assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 1, '1234'), false, 'Default 1234 must remain blocked after reset');
+
+    const stuSessAfterReset = await auth.loginStudent({ classID: '5B', studentID: 1, secretKey: '739204' });
+    assert.strictEqual(stuSessAfterReset.sid, '5B_1', 'Student must log in cleanly with teacher temporary PIN');
+
+    // Student self-service password change via updateStudentPassword
+    assert.strictEqual(persistence.updateStudentPassword('5B', 1, '000000', '864209').success, false, 'Wrong old password must reject update');
+    assert.strictEqual(persistence.updateStudentPassword('5B', 1, '739204', '1234').success, false, 'Cannot reset self-service password back to 1234');
+    assert.strictEqual(persistence.updateStudentPassword('5B', 1, '739204', '739204').success, false, 'New password must differ from current PIN');
+
+    const selfUpdRes = persistence.updateStudentPassword('5B', 1, '739204', '864209');
+    assert.strictEqual(selfUpdRes.success, true);
+    assert.strictEqual(await selfUpdRes.syncPromise, true);
+    const stuSessAfterSelf = await auth.loginStudent({ classID: '5B', studentID: 1, secretKey: '864209' });
+    assert.strictEqual(stuSessAfterSelf.sid, '5B_1', 'Student must log in with self-updated PIN');
+    assert.strictEqual(await auth.verifyStudentCustomPassword('5B', 1, '739204'), false, 'Old temporary PIN must no longer validate after student self-update');
+
+    // Verify class_rep cannot gain teacher_only permission even when granted all 4 rep permissions
+    auth.setClassRep({
+      classID: '5B',
+      studentID: 2,
+      name: '蘇子恩',
+      pin: 'rep5b99',
+      permissions: ['reply_qa', 'approve_mall', 'tune_score', 'set_rules']
+    });
+    const fullRepSess = await auth.loginClassRep({ classID: '5B', studentID: 2, pin: 'rep5b99' });
+    assert.strictEqual(auth.hasBackendPermission(fullRepSess, 'teacher_only'), false, 'class_rep with all delegated perms must still be blocked from teacher_only password reset');
+    auth.removeClassRep('5B', 2);
+  } finally {
+    Date.now = origDateNow12;
+    globalThis.localStorage = origLS12;
+    globalThis.fetch = origFetch12;
+    globalThis.getRoster = origGetRoster12;
+    globalThis.getStudent = origGetStudent12;
+    globalThis.getStudentName = origGetStudentName12;
+    if (orig5B1Snap) auth.STUDENT_CUSTOM_PASSWORDS['5B_1'] = orig5B1Snap;
+    try { auth.removeClassRep('5B', 2); } catch (_) {}
+  }
+  console.log('[PASS] 12. Teacher Student Password Reset, Clock-Skew Monotonicity, Cross-Device Sync & Self-Service Update');
+
+  console.log('=== ALL TESTS PASSED (12/12) ===');
 }
 
 runAllTests().catch(err => {

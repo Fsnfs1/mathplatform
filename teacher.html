@@ -83,13 +83,26 @@
 
   <div id="teacherMainContainer" class="container my-4 d-none" style="max-width:1100px;">
 
+    <!-- Quick Navigation Bar -->
+    <div id="teacherQuickNav" class="bg-white border rounded-3 px-3 py-2 mb-3 d-flex flex-wrap gap-2 align-items-center shadow-sm">
+      <span class="small fw-bold text-secondary me-1">🧭 功能導覽：</span>
+      <button id="navBtnPwdReset" type="button" class="btn btn-sm btn-warning fw-bold" onclick="TeacherApp.scrollToSection('secPasswordReset')">🔑 學生密碼重設</button>
+      <button id="navBtnRep" type="button" class="btn btn-sm btn-outline-primary" onclick="TeacherApp.scrollToSection('secRepManager')">🎓 科代表授權</button>
+      <button id="navBtnRules" type="button" class="btn btn-sm btn-outline-secondary" onclick="TeacherApp.scrollToSection('secGlobalRules')">⚙️ 全局規則</button>
+      <button id="navBtnTune" type="button" class="btn btn-sm btn-outline-secondary" onclick="TeacherApp.scrollToSection('secScoreTune')">📝 成績微調</button>
+      <button id="navBtnQa" type="button" class="btn btn-sm btn-outline-secondary" onclick="TeacherApp.scrollToSection('secQaReply')">💬 求助回覆</button>
+      <button id="navBtnMall" type="button" class="btn btn-sm btn-outline-secondary" onclick="TeacherApp.scrollToSection('secMallApprove')">🛍️ 商城審核</button>
+      <button id="navBtnExt" type="button" class="btn btn-sm btn-outline-secondary" onclick="TeacherApp.scrollToSection('secRegistryExt')">🌱 擴展中心</button>
+      <button id="navBtnResearch" type="button" class="btn btn-sm btn-outline-secondary" onclick="TeacherApp.scrollToSection('secResearchKeys')">🔬 研究導出</button>
+    </div>
+
     <!-- 0. Student Admin / Class Representative (科代表) Sub-App (Teacher Only) -->
     <div id="secRepManager" class="section-card border-primary">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="fw-bold mb-0 text-primary">🎓 學生管理員（科代表）授權設定子應用</h5>
         <span class="badge bg-primary">僅教師可配置</span>
       </div>
-      <p class="text-muted small mb-3">教師可指定各班科代表並設定專屬口令與部份後台權限。科代表登入後僅會看到並操作被勾選的模組，無法觸碰密鑰生成、研究數據導出或科代表設定。</p>
+      <p class="text-muted small mb-3">教師可指定各班科代表並設定專屬口令與部份後台權限。科代表登入後僅會看到並操作被勾選的模組，無法觸碰密鑰生成、研究數據導出、學生密碼重設或科代表設定。</p>
       <div class="row g-2 align-items-end mb-3">
         <div class="col-md-2">
           <label class="form-label small fw-semibold">班別</label>
@@ -117,6 +130,64 @@
         </div>
       </div>
       <div id="repListContainer" class="small"></div>
+    </div>
+
+    <!-- 0.5. Teacher-Only Student Password Reset & Cross-Device Cloud Sync -->
+    <div id="secPasswordReset" class="section-card border-warning">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h5 class="fw-bold mb-0 text-dark">🔑 學生密碼狀態查詢與重設 / 臨時密碼派發（雲端跨設備同步）</h5>
+        <div class="d-flex align-items-center gap-2">
+          <span id="pwdCloudSyncStatus" class="badge bg-secondary">尚未同步雲端</span>
+          <span class="badge bg-warning text-dark">僅教師可操作</span>
+        </div>
+      </div>
+      <p class="text-muted small mb-3">
+        系統採用不可逆加鹽 SHA-256 雜湊儲存學生自設密碼，後台不保存亦不會反查學生舊密碼明文；當同學忘記密碼時，老師可在此為其設定「新臨時數字密碼（≥4 位純數字，不能設為 <code>1234</code>）」並寫入 Google Form / Sheet 雲端，學生於任何設備登入 <code>app.html</code> 即可直接使用新密碼登入（登入後亦可於個人頁面自行更改）。
+      </p>
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">班別</label>
+          <select id="pwdResetClassSelect" class="form-select form-select-sm" onchange="TeacherApp.onPwdResetClassChange()"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">選擇學生（含密碼狀態）</label>
+          <select id="pwdResetStudentSelect" class="form-select form-select-sm" onchange="TeacherApp.renderSelectedStudentPwdInfo()"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">新臨時密碼（≥4 位純數字，非 1234）</label>
+          <div class="input-group input-group-sm">
+            <input id="pwdResetNewInput" type="text" inputmode="numeric" maxlength="12" autocomplete="off" class="form-control" placeholder="輸入或點擊生成 6 位數字" />
+            <button type="button" class="btn btn-outline-secondary" onclick="TeacherApp.fillRandomStudentPin()" title="隨機生成 6 位純數字臨時密碼">🎲 生成</button>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <button id="btnConfirmPwdReset" type="button" class="btn btn-sm btn-warning w-100 fw-bold" onclick="TeacherApp.resetSelectedStudentPassword()">✅ 重設並同步雲端</button>
+        </div>
+        <div class="col-md-2">
+          <button id="btnSyncPwdFromCloud" type="button" class="btn btn-sm btn-outline-primary w-100 fw-semibold" onclick="TeacherApp.syncPasswordStatesFromCloud(true)">🔄 同步雲端最新狀態</button>
+        </div>
+      </div>
+
+      <div id="pwdResetInfoBox" class="p-3 rounded border bg-light small mb-3"></div>
+      <div id="pwdResetResultBox" class="alert small d-none mb-3"></div>
+
+      <details id="pwdClassStatusDetails">
+        <summary id="pwdClassStatusSummary" class="fw-semibold small text-primary" style="cursor:pointer;">📋 展開查看當前班級全班密碼狀態一覽表</summary>
+        <div class="table-responsive mt-2" style="max-height:280px; overflow-y:auto;">
+          <table class="table table-sm table-hover align-middle mb-0 small">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>座號</th>
+                <th>姓名</th>
+                <th>目前密碼狀態</th>
+                <th>最後更新時間</th>
+                <th>快速操作</th>
+              </tr>
+            </thead>
+            <tbody id="pwdResetStatusTable"></tbody>
+          </table>
+        </div>
+      </details>
     </div>
 
     <!-- 1. Global Exam / Bonus / Ranking / Feedback Controls (D3, D5, D9, Section 六) -->
@@ -249,6 +320,7 @@
           <button class="btn btn-sm btn-outline-primary fw-bold" onclick="TeacherApp.generateClassRandomKeys()">🔑 為當前班級批量生成 ≥8 位高強度隨機密鑰 (S1)</button>
         </div>
       </div>
+      <div class="form-text mt-2">註：此處生成的 S1 高強度隨機口令僅寫入本機瀏覽器 <code>MP_V2_STUDENT_KEYS</code> 供離線/單機測試使用；如需為學生跨設備重設密碼並同步至 Google Sheet，請使用上方「🔑 學生密碼狀態查詢與重設」功能。</div>
       <pre id="researchPreviewOut" class="code-out mt-3 d-none"></pre>
     </div>
 
@@ -263,6 +335,7 @@
   <script src="core/storage.js"></script>
   <script src="core/auth.js"></script>
   <script src="core/bonus.js"></script>
+  <script src="js/persistence.js"></script>
 
   <script>
     const TeacherApp = (function () {
@@ -359,6 +432,16 @@
         }
       }
 
+      let lastPwdResetCopyText = '';
+      let lastPwdCloudSyncAt = 0;
+
+      function scrollToSection(sectionId) {
+        const el = document.getElementById(sectionId);
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+
       function applyPermissionView() {
         const sess = getActiveBackendSession();
         const badge = document.getElementById('backendRoleBadge');
@@ -377,6 +460,7 @@
         }
 
         document.getElementById('secRepManager').classList.toggle('d-none', !isTeacher);
+        document.getElementById('secPasswordReset').classList.toggle('d-none', !isTeacher);
         document.getElementById('secRegistryExt').classList.toggle('d-none', !isTeacher);
         document.getElementById('secResearchKeys').classList.toggle('d-none', !isTeacher);
         document.getElementById('btnPreviewAsTest').classList.toggle('d-none', !isTeacher);
@@ -385,6 +469,19 @@
         document.getElementById('secScoreTune').classList.toggle('d-none', !hasPerm('tune_score'));
         document.getElementById('secQaReply').classList.toggle('d-none', !hasPerm('reply_qa'));
         document.getElementById('secMallApprove').classList.toggle('d-none', !hasPerm('approve_mall'));
+
+        const navToggle = function (id, visible) {
+          const btn = document.getElementById(id);
+          if (btn) btn.classList.toggle('d-none', !visible);
+        };
+        navToggle('navBtnPwdReset', isTeacher);
+        navToggle('navBtnRep', isTeacher);
+        navToggle('navBtnExt', isTeacher);
+        navToggle('navBtnResearch', isTeacher);
+        navToggle('navBtnRules', hasPerm('set_rules'));
+        navToggle('navBtnTune', hasPerm('tune_score'));
+        navToggle('navBtnQa', hasPerm('reply_qa'));
+        navToggle('navBtnMall', hasPerm('approve_mall'));
       }
 
       function unlockDashboard() {
@@ -396,6 +493,15 @@
       }
 
       function logoutTeacher() {
+        lastPwdResetCopyText = '';
+        lastPwdCloudSyncAt = 0;
+        const resetInp = document.getElementById('pwdResetNewInput');
+        if (resetInp) resetInp.value = '';
+        const resetBox = document.getElementById('pwdResetResultBox');
+        if (resetBox) {
+          resetBox.classList.add('d-none');
+          resetBox.innerHTML = '';
+        }
         if (window.MathCoreAuth && typeof MathCoreAuth.logoutTeacher === 'function') {
           MathCoreAuth.logoutTeacher();
         } else {
@@ -463,6 +569,12 @@
         renderTuneLog();
         renderQaList();
         renderMallOrders();
+        if (sess.role === 'teacher') {
+          populatePwdResetClassSelect();
+          if (!window.__BYPASS_SHEET_SYNC__ && typeof window.syncAllProfilesFromSheet === 'function') {
+            syncPasswordStatesFromCloud(false).catch(function () {});
+          }
+        }
       }
 
       function populateStudentList() {
@@ -811,11 +923,413 @@
         pre.classList.remove('d-none');
       }
 
+      // =========================================================================
+      // Teacher-Only: Student Password Status Lookup & Cloud Reset
+      // =========================================================================
+      function formatPwdTimestamp(ts) {
+        const num = Number(ts) || 0;
+        if (!num) return '尚未設定 / 預設狀態';
+        try {
+          return new Intl.DateTimeFormat('zh-Hant', {
+            timeZone: 'Asia/Macau',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          }).format(new Date(num));
+        } catch (_) {
+          return new Date(num).toISOString().slice(0, 16).replace('T', ' ');
+        }
+      }
+
+      function getStudentsForPwdReset(cls) {
+        let list = [];
+        if (window.MathPlatformRegistry && typeof MathPlatformRegistry.getMergedRoster === 'function') {
+          const merged = MathPlatformRegistry.getMergedRoster();
+          if (merged && Array.isArray(merged[cls])) {
+            list = merged[cls].slice();
+          }
+        }
+        if (list.length === 0 && window.getStudentsByClass) {
+          list = (window.getStudentsByClass(cls) || []).slice();
+        }
+        return list
+          .filter(s => s && !s.isTeacherTest && String(s.id) !== '98')
+          .sort((a, b) => Number(a.id) - Number(b.id));
+      }
+
+      function getPwdRecordForTeacher(cls, sid) {
+        if (typeof window.getStudentPasswordRecord === 'function') {
+          const pRec = window.getStudentPasswordRecord(cls, sid);
+          if (pRec) return pRec;
+        }
+        if (window.MathCoreAuth && typeof MathCoreAuth.getStudentCustomPasswordRecord === 'function') {
+          return MathCoreAuth.getStudentCustomPasswordRecord(cls, sid);
+        }
+        return null;
+      }
+
+      function populatePwdResetClassSelect() {
+        const clsSel = document.getElementById('pwdResetClassSelect');
+        if (!clsSel) return;
+        const prev = clsSel.value;
+        const classes = (window.MathPlatformRegistry && MathPlatformRegistry.classes) || ['4C', '4D', '5B', '5C'];
+        clsSel.innerHTML = classes.map(c => `<option value="${esc(c)}">${esc(c)} 班</option>`).join('');
+        if (prev && classes.indexOf(prev) !== -1) {
+          clsSel.value = prev;
+        }
+        populatePwdResetStudentList(false);
+      }
+
+      function populatePwdResetStudentList(preserveSelection) {
+        const clsSel = document.getElementById('pwdResetClassSelect');
+        const stuSel = document.getElementById('pwdResetStudentSelect');
+        if (!clsSel || !stuSel) return;
+        const cls = clsSel.value || '4C';
+        const prevSid = preserveSelection ? stuSel.value : '';
+        const list = getStudentsForPwdReset(cls);
+
+        stuSel.innerHTML = list.map(s => {
+          const rec = getPwdRecordForTeacher(cls, s.id);
+          const isChanged = !!(rec && rec.passwordChanged);
+          const tag = isChanged ? '🔐 已設密碼' : '⚠️ 預設1234';
+          return `<option value="${esc(s.id)}">${esc(s.id)} 號 ${esc(s.name)} (${tag})</option>`;
+        }).join('');
+
+        if (prevSid && list.some(s => String(s.id) === String(prevSid))) {
+          stuSel.value = String(prevSid);
+        }
+        renderSelectedStudentPwdInfo();
+        renderClassPwdStatusTable();
+      }
+
+      function onPwdResetClassChange() {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        const resultBox = document.getElementById('pwdResetResultBox');
+        if (resultBox) {
+          resultBox.classList.add('d-none');
+          resultBox.innerHTML = '';
+        }
+        lastPwdResetCopyText = '';
+        populatePwdResetStudentList(false);
+      }
+
+      function renderSelectedStudentPwdInfo() {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        const clsSel = document.getElementById('pwdResetClassSelect');
+        const stuSel = document.getElementById('pwdResetStudentSelect');
+        const infoBox = document.getElementById('pwdResetInfoBox');
+        if (!clsSel || !stuSel || !infoBox) return;
+
+        const cls = clsSel.value || '4C';
+        const sid = stuSel.value;
+        if (!sid) {
+          infoBox.innerHTML = '<span class="text-muted">請先選擇班別與學生</span>';
+          return;
+        }
+        const students = getStudentsForPwdReset(cls);
+        const stu = students.find(s => String(s.id) === String(sid));
+        const stuName = (stu && stu.name) || (window.getStudentName ? window.getStudentName(cls, sid) : ('#' + sid));
+        const rec = getPwdRecordForTeacher(cls, sid);
+        const isChanged = !!(rec && rec.passwordChanged);
+        const hashPrefix = (rec && rec.hash) ? String(rec.hash).slice(0, 8) : '----';
+        const tsText = formatPwdTimestamp(rec && rec.updatedAt);
+
+        infoBox.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <strong>${esc(cls)} 班 ${esc(sid)} 號 ${esc(stuName)}</strong>
+              ${isChanged
+                ? '<span class="badge bg-success ms-2">🔐 已設定自訂個人密碼</span>'
+                : '<span class="badge bg-warning text-dark ms-2">⚠️ 預設 1234 狀態（不可用 1234 直接登入，需設定新密碼或使用教師口令）</span>'}
+            </div>
+            <div class="text-muted">
+              最後更新：<strong>${esc(tsText)}</strong> · SHA-256 校驗碼前 8 碼：<code>${esc(hashPrefix)}…</code>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderClassPwdStatusTable() {
+        const clsSel = document.getElementById('pwdResetClassSelect');
+        const tbody = document.getElementById('pwdResetStatusTable');
+        const summary = document.getElementById('pwdClassStatusSummary');
+        if (!clsSel || !tbody) return;
+        const cls = clsSel.value || '4C';
+        const students = getStudentsForPwdReset(cls);
+
+        let changedCount = 0;
+        let defaultCount = 0;
+        tbody.innerHTML = students.map(s => {
+          const rec = getPwdRecordForTeacher(cls, s.id);
+          const isChanged = !!(rec && rec.passwordChanged);
+          if (isChanged) changedCount++; else defaultCount++;
+          const statusHtml = isChanged
+            ? '<span class="badge bg-success">🔐 已設自訂密碼</span>'
+            : '<span class="badge bg-secondary">⚠️ 預設 1234</span>';
+          const tsText = formatPwdTimestamp(rec && rec.updatedAt);
+          return `
+            <tr>
+              <td class="fw-semibold">${esc(s.id)}</td>
+              <td>${esc(s.name)}</td>
+              <td>${statusHtml}</td>
+              <td class="text-muted">${esc(tsText)}</td>
+              <td>
+                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="TeacherApp.selectStudentForPwdReset('${esc(cls)}', '${esc(s.id)}')">選取重設</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        if (summary) {
+          summary.textContent = `📋 展開查看 ${cls} 班全班密碼狀態一覽表（已設自訂密碼：${changedCount} 人 · 預設狀態：${defaultCount} 人）`;
+        }
+      }
+
+      function selectStudentForPwdReset(cls, sid) {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        const clsSel = document.getElementById('pwdResetClassSelect');
+        const stuSel = document.getElementById('pwdResetStudentSelect');
+        if (clsSel && clsSel.value !== cls) {
+          clsSel.value = cls;
+          populatePwdResetStudentList(false);
+        }
+        if (stuSel) {
+          stuSel.value = String(sid);
+        }
+        renderSelectedStudentPwdInfo();
+        scrollToSection('secPasswordReset');
+        const inp = document.getElementById('pwdResetNewInput');
+        if (inp) inp.focus();
+      }
+
+      function fillRandomStudentPin() {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        let num = 0;
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+          const arr = new Uint32Array(1);
+          window.crypto.getRandomValues(arr);
+          num = 100000 + (arr[0] % 900000);
+        } else {
+          num = 100000 + Math.floor(Math.random() * 900000);
+        }
+        const pin = String(num);
+        const inp = document.getElementById('pwdResetNewInput');
+        if (inp) {
+          inp.value = pin;
+          inp.focus();
+        }
+        return pin;
+      }
+
+      async function syncPasswordStatesFromCloud(showFeedback) {
+        if (!ensureTeacherAuth('teacher_only')) return { success: false, pwdCount: 0 };
+        const badge = document.getElementById('pwdCloudSyncStatus');
+        const btn = document.getElementById('btnSyncPwdFromCloud');
+        const resultBox = document.getElementById('pwdResetResultBox');
+        if (badge) {
+          badge.className = 'badge bg-info text-dark';
+          badge.textContent = '⏳ 正在同步雲端狀態...';
+        }
+        if (btn) btn.disabled = true;
+
+        let res = { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
+        try {
+          if (typeof window.syncAllProfilesFromSheet === 'function' && !window.__BYPASS_SHEET_SYNC__) {
+            res = await window.syncAllProfilesFromSheet();
+          }
+          if (res && res.success) {
+            lastPwdCloudSyncAt = Date.now();
+            if (badge) {
+              badge.className = 'badge bg-success';
+              badge.textContent = `🟢 雲端已同步 (${Number(res.pwdCount || 0)} 筆密碼更新)`;
+            }
+          } else if (badge) {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = '⚠️ 離線 / 本地快照模式';
+          }
+          populatePwdResetStudentList(true);
+          if (showFeedback && resultBox) {
+            if (res && res.success) {
+              resultBox.className = 'alert alert-info small mb-3';
+              resultBox.innerHTML = `☁️ <strong>雲端同步完成</strong>：已比對 Google Sheet 紀錄，套用 <strong>${Number(res.pwdCount || 0)}</strong> 筆最新學生密碼更新、<strong>${Number(res.count || 0)}</strong> 筆人臉資料。`;
+              resultBox.classList.remove('d-none');
+            } else {
+              resultBox.className = 'alert alert-warning small mb-3';
+              resultBox.textContent = '⚠️ 無法連線讀取 Google Sheet，目前顯示本地與系統快照紀錄。';
+              resultBox.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          if (badge) {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = '⚠️ 雲端同步異常';
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+        return res;
+      }
+
+      async function resetSelectedStudentPassword() {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        const clsSel = document.getElementById('pwdResetClassSelect');
+        const stuSel = document.getElementById('pwdResetStudentSelect');
+        const inp = document.getElementById('pwdResetNewInput');
+        const btn = document.getElementById('btnConfirmPwdReset');
+        const resultBox = document.getElementById('pwdResetResultBox');
+
+        const cls = clsSel ? clsSel.value : '';
+        const sid = stuSel ? stuSel.value : '';
+        const newPin = inp ? inp.value.trim() : '';
+
+        if (!cls || !sid || String(sid) === '98') {
+          if (resultBox) {
+            resultBox.className = 'alert alert-danger small mb-3';
+            resultBox.textContent = '❌ 請選擇有效的班別與學生座號（不含 98 號教師測試帳號）。';
+            resultBox.classList.remove('d-none');
+          }
+          return;
+        }
+        if (!/^\d{4,}$/.test(newPin)) {
+          if (resultBox) {
+            resultBox.className = 'alert alert-danger small mb-3';
+            resultBox.textContent = '❌ 新臨時密碼必須為至少 4 位純數字（建議點擊「🎲 生成」取得 6 位數字密碼）。';
+            resultBox.classList.remove('d-none');
+          }
+          return;
+        }
+        if (newPin === '1234') {
+          if (resultBox) {
+            resultBox.className = 'alert alert-danger small mb-3';
+            resultBox.textContent = '❌ 學生端禁止以 1234 登入，請設定非 1234 的新密碼！';
+            resultBox.classList.remove('d-none');
+          }
+          return;
+        }
+        if (typeof window.saveStudentPassword !== 'function') {
+          if (resultBox) {
+            resultBox.className = 'alert alert-danger small mb-3';
+            resultBox.textContent = '❌ 密碼持久層模組 (js/persistence.js) 未載入，請重新整理頁面。';
+            resultBox.classList.remove('d-none');
+          }
+          return;
+        }
+
+        const students = getStudentsForPwdReset(cls);
+        const stu = students.find(s => String(s.id) === String(sid));
+        const stuName = (stu && stu.name) || (window.getStudentName ? window.getStudentName(cls, sid) : ('#' + sid));
+
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ 同步寫入中...';
+        }
+
+        try {
+          // Pull newest Sheet TS before issuing reset when online so TS stays strictly monotonic
+          const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+          if (!window.__BYPASS_SHEET_SYNC__ && isOnline && typeof window.syncAllProfilesFromSheet === 'function' && (Date.now() - lastPwdCloudSyncAt > 10000)) {
+            await window.syncAllProfilesFromSheet().then(function () {
+              lastPwdCloudSyncAt = Date.now();
+            }).catch(function () {});
+          }
+
+          const res = window.saveStudentPassword(cls, sid, newPin, true);
+          if (!res || !res.success) {
+            if (resultBox) {
+              resultBox.className = 'alert alert-danger small mb-3';
+              resultBox.textContent = '❌ ' + ((res && (res.message || res.reason)) || '重設密碼失敗');
+              resultBox.classList.remove('d-none');
+            }
+            return;
+          }
+
+          // Non-sensitive audit log only (never persist plaintext PIN in localStorage)
+          try {
+            const audit = JSON.parse(localStorage.getItem('MP_V2_TEACHER_AUDIT_LOG') || '[]');
+            audit.unshift({ packId: 'password_reset', sid: cls + '_' + sid, action: 'password_reset', ts: new Date().toISOString() });
+            localStorage.setItem('MP_V2_TEACHER_AUDIT_LOG', JSON.stringify(audit.slice(0, 50)));
+          } catch (_) {}
+
+          const syncOk = (res.syncPromise && typeof res.syncPromise.then === 'function')
+            ? await res.syncPromise
+            : true;
+          const pendingCount = (window.OfflineSyncManager && typeof OfflineSyncManager.getStatus === 'function')
+            ? OfflineSyncManager.getStatus().pendingCount
+            : 0;
+
+          if (inp) inp.value = '';
+          populatePwdResetStudentList(true);
+
+          lastPwdResetCopyText = `${cls} 班 ${sid} 號 ${stuName} 同學，你的數學平台 (app.html) 登入密碼已重設為：${newPin}，請使用新密碼登入（登入後可在「個人成績與帳戶」頁面自行更改）。`;
+
+          if (resultBox) {
+            const cloudSynced = Boolean(syncOk && pendingCount === 0);
+            resultBox.className = `alert ${cloudSynced ? 'alert-success' : 'alert-warning'} small mb-3`;
+            resultBox.innerHTML = `
+              <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                  <div class="fw-bold mb-1">✅ 已重設 ${esc(cls)} 班 ${esc(sid)} 號 ${esc(stuName)} 的登入密碼！</div>
+                  <div>臨時新密碼：<code class="fs-6 bg-white px-2 py-1 rounded border">${esc(newPin)}</code> · 生效時間：<strong>${esc(formatPwdTimestamp(res.record && res.record.updatedAt))}</strong></div>
+                  <div class="mt-1">
+                    ${cloudSynced
+                      ? '☁️ <strong>雲端跨設備同步成功</strong>：已寫入 Google Form / Sheet，該生在手機或另一台電腦開啟 <code>app.html</code> 即可直接以新密碼登入。'
+                      : `⚠️ <strong>目前離線或雲端寫入尚未完成</strong>（待補傳筆數：${Number(pendingCount || 1)}）：已暫存本地重傳隊列，恢復連線後會自動補傳至 Google Sheet。`}
+                  </div>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-dark fw-semibold" onclick="TeacherApp.copyLastResetMessage()">📋 複製通知訊息給學生</button>
+                  ${cloudSynced ? '' : '<button type="button" class="btn btn-sm btn-primary fw-semibold" onclick="TeacherApp.retryPendingCloudSync()">🔄 重試雲端補傳</button>'}
+                </div>
+              </div>
+            `;
+            resultBox.classList.remove('d-none');
+          }
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '✅ 重設並同步雲端';
+          }
+        }
+      }
+
+      async function copyLastResetMessage() {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        if (!lastPwdResetCopyText) return;
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(lastPwdResetCopyText);
+            alert('✅ 已複製給學生的密碼重設通知訊息！');
+            return;
+          }
+        } catch (_) {}
+        window.prompt('請複製以下訊息發送給學生：', lastPwdResetCopyText);
+      }
+
+      async function retryPendingCloudSync() {
+        if (!ensureTeacherAuth('teacher_only')) return;
+        if (!window.OfflineSyncManager || typeof OfflineSyncManager.flushQueue !== 'function') return;
+        await OfflineSyncManager.flushQueue(true);
+        const st = OfflineSyncManager.getStatus();
+        const resultBox = document.getElementById('pwdResetResultBox');
+        if (resultBox && !resultBox.classList.contains('d-none')) {
+          if (st.pendingCount === 0) {
+            resultBox.className = 'alert alert-success small mb-3';
+            resultBox.innerHTML += '<div class="mt-1 fw-bold">✅ 離線補傳已完成，所有密碼重設紀錄已同步至 Google Sheet！</div>';
+          } else {
+            alert(`仍有 ${st.pendingCount} 筆待同步紀錄，請檢查網絡連線後再試。`);
+          }
+        }
+      }
+
       return {
         checkGateOnBoot: checkGateOnBoot,
         handleTeacherLogin: handleTeacherLogin,
         handleRepLogin: handleRepLogin,
         logoutTeacher: logoutTeacher,
+        scrollToSection: scrollToSection,
         previewBankAsTeacherTest: previewBankAsTeacherTest,
         init: init,
         populateStudentList: populateStudentList,
@@ -823,6 +1337,14 @@
         populateRepCandidateList: populateRepCandidateList,
         assignClassRep: assignClassRep,
         removeClassRepItem: removeClassRepItem,
+        onPwdResetClassChange: onPwdResetClassChange,
+        renderSelectedStudentPwdInfo: renderSelectedStudentPwdInfo,
+        selectStudentForPwdReset: selectStudentForPwdReset,
+        fillRandomStudentPin: fillRandomStudentPin,
+        syncPasswordStatesFromCloud: syncPasswordStatesFromCloud,
+        resetSelectedStudentPassword: resetSelectedStudentPassword,
+        copyLastResetMessage: copyLastResetMessage,
+        retryPendingCloudSync: retryPendingCloudSync,
         saveGlobalSettings: saveGlobalSettings,
         applyScoreTune: applyScoreTune,
         applyCorrectionBonus: applyCorrectionBonus,

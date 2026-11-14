@@ -717,22 +717,25 @@
    */
   async function syncAllProfilesFromSheet() {
     const gasUrl = PERSISTENCE_CONFIG.gasSheetReaderUrl;
-    if (!gasUrl) return { success: false, count: 0, students: [] };
+    if (!gasUrl) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timeoutId = controller ? setTimeout(function () { controller.abort(); }, 5000) : null;
     try {
       const response = await fetch(gasUrl, {
         method: 'GET',
         mode: 'cors',
+        cache: 'no-store',
         signal: controller ? controller.signal : undefined
       });
       if (timeoutId) clearTimeout(timeoutId);
-      if (!response.ok) return { success: false, count: 0, students: [] };
+      if (!response.ok) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
       const rows = await response.json();
-      if (!Array.isArray(rows)) return { success: false, count: 0, students: [] };
+      if (!Array.isArray(rows)) return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
 
       let syncedCount = 0;
       const syncedStudents = [];
+      let pwdSyncedCount = 0;
+      const pwdSyncedStudents = [];
       const faceMap = {};
       const pwdMap = {};
 
@@ -811,6 +814,8 @@
               updatedAt: recObj.updatedAt
             };
           }
+          pwdSyncedCount++;
+          pwdSyncedStudents.push(pk);
         }
       }
 
@@ -839,12 +844,18 @@
           }
         }
       }
-      console.log(`[Persistence] Cloud sync finished: ${syncedCount} profile(s) synced:`, syncedStudents);
-      return { success: true, count: syncedCount, students: syncedStudents };
+      console.log(`[Persistence] Cloud sync finished: ${syncedCount} profile(s), ${pwdSyncedCount} password(s) synced.`);
+      return {
+        success: true,
+        count: syncedCount,
+        students: syncedStudents,
+        pwdCount: pwdSyncedCount,
+        pwdStudents: pwdSyncedStudents
+      };
     } catch (err) {
       if (timeoutId) clearTimeout(timeoutId);
       console.warn("[Persistence] Failed to sync profiles from sheet:", err);
-      return { success: false, count: 0, students: [] };
+      return { success: false, count: 0, students: [], pwdCount: 0, pwdStudents: [] };
     }
   }
 
@@ -948,8 +959,8 @@
       } catch (e) {}
     }
 
-    // Check online status; if offline, automatically enqueue
-    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    // Check online status; if explicitly offline, automatically enqueue
+    const isOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
     if (!isOnline) {
       console.log("[Persistence] Browser is offline. Enqueuing Form record to LocalStorage queue.");
       OfflineSyncManager.enqueue("FORM", PERSISTENCE_CONFIG.googleFormUrl, payload);
@@ -1009,7 +1020,7 @@
       payload.filename = uploadData.fileName || uploadData.filename;
     }
 
-    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const isOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
     const targetUrl = uploadData.gasUrl || PERSISTENCE_CONFIG.gasDriveUploaderUrl;
 
     // If offline or placeholder URL, manage queue or simulated completion
@@ -1221,7 +1232,7 @@
       queue.push(item);
       this.saveQueue(queue);
 
-      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const isOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
       if (isOnline) {
         this.flushQueue();
       }
@@ -1230,7 +1241,7 @@
 
     flushQueue: async function (forceAll) {
       if (this.isFlushing) return;
-      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const isOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
       if (!isOnline) {
         this.notifyListeners();
         return;
@@ -1306,7 +1317,7 @@
             failedItemsMap.set(item.id, item);
 
             // Abort timeout or offline detected: break immediately to release isFlushing lock within 3.5s
-            if (err.name === 'AbortError' || err.name === 'TimeoutError' || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+            if (err.name === 'AbortError' || err.name === 'TimeoutError' || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
               console.warn('[OfflineSyncManager] Abort timeout / offline detected; ending flush early to release lock.');
               break;
             }
@@ -1332,7 +1343,7 @@
 
     getStatus: function () {
       const queue = this.getQueue();
-      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      const isOnline = (typeof navigator === 'undefined' || navigator.onLine !== false);
       return {
         pendingCount: queue.length,
         isOnline: isOnline,
@@ -1770,9 +1781,11 @@
       return { success: false, reason: "新密碼不能與預設密碼 1234 相同", message: "新密碼不能與預設密碼 1234 相同" };
     }
 
+    const prevRec = getStudentPasswordRecord(cid, sid);
+    const prevTs = (prevRec && Number(prevRec.updatedAt)) || 0;
+    const now = Math.max(Date.now(), prevTs + 1000);
     const salt = derivePasswordSalt(cid, sid);
     const hash = hashPassword(pwdStr, salt);
-    const now = Date.now();
     const record = {
       classID: cid,
       studentID: sid,
@@ -1812,16 +1825,17 @@
     }
 
     // Dual persistence Channel: submit password record to Sheet
-    submitFormRecord({
+    const syncPromise = submitFormRecord({
       classID: cid,
       studentID: sid,
       dateID: `PWD|HASH:${hash}|SALT:${salt}|CHANGED:${record.passwordChanged ? 1 : 0}|TS:${now}`,
       scoreTag: record.passwordChanged ? "PASSWORD_UPDATE" : "PASSWORD_INIT"
     }).catch(function (e) {
       console.warn("[Persistence] Failed to submit password record to Sheet:", e);
+      return false;
     });
 
-    return { success: true, record: record, reason: "", message: "" };
+    return { success: true, record: record, syncPromise: syncPromise, reason: "", message: "" };
   }
 
   /**

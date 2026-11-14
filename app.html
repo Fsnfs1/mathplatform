@@ -105,7 +105,7 @@
           <div class="form-text text-muted small mt-1">💡 教師直通測試：每班均配置 <strong>98 號</strong>「教師測試帳戶」（持專屬密鑰驗證後直通題庫）。</div>
         </div>
         <div id="gateAlert" class="alert alert-danger py-2 small d-none mb-2"></div>
-        <button class="btn btn-primary w-100 fw-bold py-2" onclick="AppUI.handleGateLogin()">驗證身分並進入系統</button>
+        <button id="btnGateLogin" class="btn btn-primary w-100 fw-bold py-2" onclick="AppUI.handleGateLogin()">驗證身分並進入系統</button>
       </div>
     </div>
   </section>
@@ -269,9 +269,12 @@
     <div class="card shadow-sm border-0 p-4 mb-3">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h5 class="fw-bold mb-0">📊 A6 個人成績查詢 & A8 自動加分系統</h5>
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="consentToggleSwitch" checked onchange="AppUI.toggleConsent(this.checked)">
-          <label class="form-check-label small" for="consentToggleSwitch">同意匿名數據用於教學研究 (D6)</label>
+        <div class="d-flex align-items-center flex-wrap gap-3">
+          <button id="btnOpenChangePwd" type="button" class="btn btn-sm btn-outline-primary fw-semibold" onclick="AppUI.openChangePasswordModal()">🔐 修改個人登入密碼</button>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="consentToggleSwitch" checked onchange="AppUI.toggleConsent(this.checked)">
+            <label class="form-check-label small" for="consentToggleSwitch">同意匿名數據用於教學研究 (D6)</label>
+          </div>
         </div>
       </div>
       <div id="scorePackTabs" class="d-flex gap-2 flex-wrap mb-3"></div>
@@ -389,6 +392,33 @@
     </div>
   </div>
 
+  <!-- Modal 4: Student Self-Service Password Update -->
+  <div id="modalChangeStudentPassword" class="modal-backdrop-custom">
+    <div class="modal-card">
+      <h5 class="fw-bold mb-2">🔐 修改個人登入密碼</h5>
+      <p class="small text-muted mb-3">
+        設定新的純數字登入密碼（至少 4 位數字，不可設為 <code>1234</code>），更新後將立即同步至 Google Sheet 雲端，跨設備均可使用新密碼登入。
+      </p>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold">原密碼或教師發放口令</label>
+        <input id="stuOldPwdInput" type="password" autocomplete="current-password" class="form-control form-control-sm" placeholder="輸入目前密碼（或教師臨時密碼 / 專屬口令）" />
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold">新密碼（至少 4 位純數字，非 1234）</label>
+        <input id="stuNewPwdInput" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password" class="form-control form-control-sm" placeholder="輸入新純數字密碼" />
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">再次確認新密碼</label>
+        <input id="stuConfirmPwdInput" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password" class="form-control form-control-sm" placeholder="再次輸入新密碼" />
+      </div>
+      <div id="stuChangePwdAlert" class="alert py-2 small d-none mb-2"></div>
+      <div class="d-flex gap-2">
+        <button id="btnSubmitChangePwd" type="button" class="btn btn-primary flex-grow-1 fw-bold" onclick="AppUI.submitChangeStudentPassword()">✅ 儲存並同步雲端</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('modalChangeStudentPassword').classList.remove('show')">取消</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Load Existing Read-Only Data & Face Auth Files (D11: Zero Modification to Red-Line Files) -->
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
   <script src="js/roster.js"></script>
@@ -434,6 +464,9 @@
       let gateCameraSeq = 0;
       let lastLivenessFailTs = 0;
       let activeScorePackId = null;
+      let initialSheetSyncPromise = null;
+      let initialSheetSyncDone = false;
+      let lastSheetSyncAt = 0;
 
       function esc(str) {
         return String(str == null ? '' : str)
@@ -462,7 +495,17 @@
         } catch (_) {}
         try {
           if (!window.__BYPASS_SHEET_SYNC__ && typeof window.syncAllProfilesFromSheet === 'function') {
-            window.syncAllProfilesFromSheet().catch(function () {});
+            initialSheetSyncDone = false;
+            initialSheetSyncPromise = window.syncAllProfilesFromSheet()
+              .then(function (r) {
+                initialSheetSyncDone = true;
+                lastSheetSyncAt = Date.now();
+                return r;
+              })
+              .catch(function () {
+                initialSheetSyncDone = true;
+                return { success: false, count: 0, students: [] };
+              });
           }
         } catch (_) {}
 
@@ -962,11 +1005,12 @@
       }
 
       async function handleGateLogin() {
-        let cls = document.getElementById('gateClassSelect').value;
+        const initialCls = document.getElementById('gateClassSelect').value;
         const sel = document.getElementById('gateStudentSelect');
-        let sid = sel.value;
+        const initialSid = sel.value;
         const secret = document.getElementById('gateSecretInput').value.trim();
         const alertEl = document.getElementById('gateAlert');
+        const btnGate = document.getElementById('btnGateLogin');
 
         if (!secret || secret.length < 2) {
           alertEl.textContent = '請輸入個人密碼或老師發放口令！';
@@ -980,9 +1024,14 @@
           return;
         }
 
-        try {
+        const origBtnText = btnGate ? btnGate.textContent : '';
+
+        async function tryGatePass() {
+          let cls = initialCls;
+          let sid = initialSid;
           const hadFaceScan = Boolean(gateCapturedSnap && gateCapturedSnap.descriptor);
           let resolvedTarget = null;
+
           // If face was scanned and there are close candidates, check if the entered password/key matches either the selected student OR one of the close face candidates!
           if (hadFaceScan && typeof MathCoreAuth.resolveFaceCandidateWithPassword === 'function') {
             const matchedProf = await MathCoreAuth.resolveFaceCandidateWithPassword(
@@ -1031,20 +1080,63 @@
           });
           const sess = (res && res.session) || res;
           if (!sess || !sess.token) {
-            alertEl.textContent = '❌ ' + ((res && res.error) || '驗證失敗，請檢查學號、個人密碼或老師口令。');
-            alertEl.classList.remove('d-none');
-            return;
+            throw new Error((res && res.error) || '驗證失敗，請檢查學號、個人密碼或老師口令。');
           }
+          return { sess: sess, hadFaceScan: hadFaceScan };
+        }
+
+        function finishGateLogin(loginResult) {
           alertEl.classList.add('d-none');
           document.getElementById('gateSecretInput').value = '';
           stopGateCamera();
-          if (hadFaceScan) {
-            recordFaceLoginTrace(sess, gateCapturedSnap);
+          if (loginResult.hadFaceScan) {
+            recordFaceLoginTrace(loginResult.sess, gateCapturedSnap);
           }
           gateCapturedSnap = null;
           gateCloseCandidates = [];
-          onLoginSuccess(sess, true);
+          onLoginSuccess(loginResult.sess, true);
+        }
+
+        try {
+          const firstResult = await tryGatePass();
+          finishGateLogin(firstResult);
         } catch (err) {
+          const isPure98 = String(initialSid) === '98' && !/^(4C|4D|5B|5C)\d{2}/i.test(secret.replace(/[^A-Z0-9]/gi, ''));
+          const canRetryCloudSync = !isPure98 &&
+            !window.__BYPASS_SHEET_SYNC__ &&
+            secret !== '1234' &&
+            secret.length >= 4 &&
+            typeof window.syncAllProfilesFromSheet === 'function';
+
+          if (canRetryCloudSync) {
+            if (btnGate) {
+              btnGate.disabled = true;
+              btnGate.textContent = '⏳ 正在核對雲端最新密碼...';
+            }
+            try {
+              if (initialSheetSyncPromise && !initialSheetSyncDone) {
+                await initialSheetSyncPromise;
+              }
+              if (Date.now() - lastSheetSyncAt > 1500) {
+                await window.syncAllProfilesFromSheet();
+                initialSheetSyncDone = true;
+                lastSheetSyncAt = Date.now();
+              }
+              const retryResult = await tryGatePass();
+              finishGateLogin(retryResult);
+              return;
+            } catch (retryErr) {
+              alertEl.textContent = '❌ ' + ((retryErr && retryErr.message) || '驗證失敗，請檢查學號、個人密碼或老師口令。');
+              alertEl.classList.remove('d-none');
+              return;
+            } finally {
+              if (btnGate) {
+                btnGate.disabled = false;
+                btnGate.textContent = origBtnText || '驗證身分並進入系統';
+              }
+            }
+          }
+
           alertEl.textContent = '❌ ' + ((err && err.message) || '驗證失敗，請檢查學號、個人密碼或老師口令。');
           alertEl.classList.remove('d-none');
         }
@@ -1059,6 +1151,10 @@
         document.getElementById('hubWelcomeTitle').textContent = `👋 你好，${student.classID} 班 ${student.name}`;
         document.getElementById('btnNavHub').classList.remove('d-none');
         document.getElementById('btnLogout').classList.remove('d-none');
+        const btnChangePwd = document.getElementById('btnOpenChangePwd');
+        if (btnChangePwd) {
+          btnChangePwd.classList.toggle('d-none', isSeat98Test);
+        }
 
         // Immediately flush any pending outbox items when online in Macau
         if (window.MathCoreSync && typeof MathCoreSync.flushNow === 'function') {
@@ -1114,6 +1210,17 @@
         if (candPanel) candPanel.classList.add('d-none');
         const faceAlert = document.getElementById('faceFirstAlert');
         if (faceAlert) faceAlert.classList.add('d-none');
+        const changePwdModal = document.getElementById('modalChangeStudentPassword');
+        if (changePwdModal) changePwdModal.classList.remove('show');
+        ['stuOldPwdInput', 'stuNewPwdInput', 'stuConfirmPwdInput'].forEach(function (id) {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        const pwdAlert = document.getElementById('stuChangePwdAlert');
+        if (pwdAlert) {
+          pwdAlert.classList.add('d-none');
+          pwdAlert.textContent = '';
+        }
         currentStudent = null;
         activeSession = null;
         if (quizTimerId) clearInterval(quizTimerId);
@@ -1826,6 +1933,11 @@
       // === A6 My Scores & A8 Auto-Bonus Cap ===
       function openMeApp() {
         if (!currentStudent) return;
+        const isSeat98Test = String(currentStudent.studentID) === '98' || !!currentStudent.isTeacherTest;
+        const btnChangePwd = document.getElementById('btnOpenChangePwd');
+        if (btnChangePwd) {
+          btnChangePwd.classList.toggle('d-none', isSeat98Test);
+        }
         const reg = window.MathPlatformRegistry;
         const packs = (reg && typeof reg.getScorePacksForClass === 'function')
           ? reg.getScorePacksForClass(currentStudent.classID)
@@ -2276,6 +2388,132 @@
         });
       }
 
+      // === Student Self-Service Password Update ===
+      function openChangePasswordModal() {
+        if (!currentStudent || String(currentStudent.studentID) === '98' || currentStudent.isTeacherTest) return;
+        const modal = document.getElementById('modalChangeStudentPassword');
+        if (!modal) return;
+        ['stuOldPwdInput', 'stuNewPwdInput', 'stuConfirmPwdInput'].forEach(function (id) {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        const alertBox = document.getElementById('stuChangePwdAlert');
+        if (alertBox) {
+          alertBox.classList.add('d-none');
+          alertBox.textContent = '';
+        }
+        modal.classList.add('show');
+        const oldInp = document.getElementById('stuOldPwdInput');
+        if (oldInp) oldInp.focus();
+      }
+
+      async function submitChangeStudentPassword() {
+        if (!currentStudent || String(currentStudent.studentID) === '98' || currentStudent.isTeacherTest) return;
+        const oldInp = document.getElementById('stuOldPwdInput');
+        const newInp = document.getElementById('stuNewPwdInput');
+        const confirmInp = document.getElementById('stuConfirmPwdInput');
+        const alertBox = document.getElementById('stuChangePwdAlert');
+        const btn = document.getElementById('btnSubmitChangePwd');
+
+        function showPwdAlert(kind, msg) {
+          if (!alertBox) return;
+          alertBox.className = 'alert alert-' + kind + ' py-2 small mb-2';
+          alertBox.textContent = msg;
+          alertBox.classList.remove('d-none');
+        }
+
+        const oldPwd = oldInp ? oldInp.value.trim() : '';
+        const newPwd = newInp ? newInp.value.trim() : '';
+        const confirmPwd = confirmInp ? confirmInp.value.trim() : '';
+
+        if (!oldPwd) {
+          showPwdAlert('danger', '❌ 請輸入目前密碼或教師發放口令。');
+          return;
+        }
+        if (!/^\d{4,}$/.test(newPwd)) {
+          showPwdAlert('danger', '❌ 新密碼必須為至少 4 位純數字。');
+          return;
+        }
+        if (newPwd === '1234') {
+          showPwdAlert('danger', '❌ 不可將密碼設為預設 1234，請換一個 4 位以上數字密碼。');
+          return;
+        }
+        if (newPwd === oldPwd) {
+          showPwdAlert('danger', '❌ 新密碼不得與目前使用的密碼相同。');
+          return;
+        }
+        if (newPwd !== confirmPwd) {
+          showPwdAlert('danger', '❌ 兩次輸入的新密碼不一致，請重新確認。');
+          return;
+        }
+        if (typeof window.saveStudentPassword !== 'function') {
+          showPwdAlert('danger', '❌ 密碼持久層模組未就緒，請重新整理頁面。');
+          return;
+        }
+
+        const cid = currentStudent.classID;
+        const sid = currentStudent.studentID;
+        const origBtnText = btn ? btn.textContent : '';
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ 正在驗證並同步雲端...';
+        }
+
+        try {
+          async function checkOldCredential() {
+            if (typeof window.verifyStudentPassword === 'function' && window.verifyStudentPassword(cid, sid, oldPwd)) {
+              return true;
+            }
+            if (window.MathCoreAuth && typeof MathCoreAuth.verifyStudentRosterKey === 'function') {
+              return await MathCoreAuth.verifyStudentRosterKey(cid, sid, oldPwd);
+            }
+            return false;
+          }
+
+          let oldOk = await checkOldCredential();
+          if (!oldOk && !window.__BYPASS_SHEET_SYNC__ && typeof window.syncAllProfilesFromSheet === 'function' && (Date.now() - lastSheetSyncAt > 1500)) {
+            await window.syncAllProfilesFromSheet().catch(function () {});
+            initialSheetSyncDone = true;
+            lastSheetSyncAt = Date.now();
+            oldOk = await checkOldCredential();
+          }
+
+          if (!oldOk) {
+            showPwdAlert('danger', '❌ 原密碼或教師發放口令不正確，請重新確認。');
+            return;
+          }
+
+          const res = window.saveStudentPassword(cid, sid, newPwd, true);
+          if (!res || !res.success) {
+            showPwdAlert('danger', '❌ ' + ((res && (res.message || res.reason)) || '更新密碼失敗，請稍後再試。'));
+            return;
+          }
+
+          const syncOk = (res.syncPromise && typeof res.syncPromise.then === 'function')
+            ? await res.syncPromise
+            : true;
+          const pendingCount = (window.OfflineSyncManager && typeof OfflineSyncManager.getStatus === 'function')
+            ? OfflineSyncManager.getStatus().pendingCount
+            : 0;
+          lastSheetSyncAt = Date.now();
+
+          if (oldInp) oldInp.value = '';
+          if (newInp) newInp.value = '';
+          if (confirmInp) confirmInp.value = '';
+
+          if (syncOk && pendingCount === 0) {
+            showPwdAlert('success', '✅ 個人密碼已更新並同步至雲端 Google Sheet！下次於任何設備皆可用新密碼登入。');
+          } else {
+            showPwdAlert('warning', '✅ 個人密碼已於本機更新！因目前離線或雲端忙碌，已加入自動補傳隊列（待補傳：' + pendingCount + ' 筆），恢復連線後將自動同步至雲端。');
+          }
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = origBtnText || '✅ 儲存並同步雲端';
+          }
+        }
+      }
+
       return {
         init: init,
         showScreen: showScreen,
@@ -2315,7 +2553,9 @@
         toggleArenaAllow: toggleArenaAllow,
         openArenaLobby: openArenaLobby,
         agreeArenaMatch: agreeArenaMatch,
-        enterArenaMatchNow: enterArenaMatchNow
+        enterArenaMatchNow: enterArenaMatchNow,
+        openChangePasswordModal: openChangePasswordModal,
+        submitChangeStudentPassword: submitChangeStudentPassword
       };
     })();
 
