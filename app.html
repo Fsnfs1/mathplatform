@@ -29,10 +29,10 @@
     .dosage-badge { padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; background: #dbeafe; color: #1e40af; }
     .dosage-badge.escalated { background: #fef3c7; color: #92400e; }
     .dosage-badge.penalty { background: #fee2e2; color: #b91c1c; }
-    .modal-backdrop-custom { position: fixed; inset: 0; background: rgba(15,23,42,0.65); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 16px; }
-    .modal-backdrop-custom.show { display: flex; }
-    .modal-card { background: #fff; border-radius: 16px; max-width: 540px; width: 100%; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
-    .mp-toast-container { position: fixed; top: 64px; right: 16px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px)); pointer-events: none; }
+    .modal-backdrop-custom { position: fixed; top: 0; right: 0; bottom: 0; left: 0; inset: 0; background: rgba(15,23,42,0.65); z-index: 10500; display: none; visibility: hidden; pointer-events: none; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; -webkit-transform: translateZ(0); transform: translateZ(0); }
+    .modal-backdrop-custom.show { display: flex; visibility: visible; pointer-events: auto; }
+    .modal-card { position: relative; z-index: 1; background: #fff; border-radius: 16px; max-width: 540px; width: 100%; margin: auto; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.25); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .mp-toast-container { position: fixed; top: 64px; right: 16px; z-index: 11000; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px)); pointer-events: none; }
     .mp-toast { padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 700; color: #fff; background: #1e293b; box-shadow: 0 8px 24px rgba(15,23,42,0.28); border-left: 4px solid #38bdf8; }
     .mp-toast-warning { background: #fef3c7; color: #78350f; border-left-color: #f59e0b; }
     .mp-toast-info { background: #eff6ff; color: #1e3a8a; border-left-color: #2563eb; }
@@ -347,17 +347,17 @@
   </section>
 
   <!-- Modal 1: D6 Research Ethics Informed Consent (First Login) -->
-  <div id="modalConsent" class="modal-backdrop-custom">
+  <div id="modalConsent" class="modal-backdrop-custom" role="dialog" aria-modal="true" aria-labelledby="modalConsentTitle">
     <div class="modal-card">
-      <h5 class="fw-bold mb-2">📋 教學研究知情同意說明 (D6)</h5>
+      <h5 id="modalConsentTitle" class="fw-bold mb-2">📋 教學研究知情同意說明 (D6)</h5>
       <p class="small text-secondary">
         本平台會記錄你的答題與操作數據（包括按鍵、點擊、提示使用與作答時間），用於改進教學及教師的教學論文研究。
         研究發表與導出時均採用匿名編號（如 <code>R-3fa91c0e</code>），絕不會出現你的姓名或學號。
         你可以隨時選擇是否參與研究，這<strong>不會影響</strong>你的成績或正常使用本平台。
       </p>
-      <div class="d-flex gap-2 mt-3">
-        <button class="btn btn-primary flex-grow-1 fw-bold" onclick="AppUI.confirmConsent(true)">✅ 我同意數據用於教學研究</button>
-        <button class="btn btn-outline-secondary" onclick="AppUI.confirmConsent(false)">不同意（仍可正常使用）</button>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button id="btnConsentAgree" type="button" class="btn btn-primary flex-grow-1 fw-bold py-2" style="min-height:44px; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;" onclick="AppUI.confirmConsent(true)">✅ 我同意數據用於教學研究</button>
+        <button id="btnConsentDecline" type="button" class="btn btn-outline-secondary py-2" style="min-height:44px; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;" onclick="AppUI.confirmConsent(false)">不同意（仍可正常使用）</button>
       </div>
     </div>
   </div>
@@ -475,6 +475,7 @@
       let initialSheetSyncDone = false;
       let lastSheetSyncAt = 0;
       let lastSheetSyncOk = false;
+      const sessionConsentFallback = {};
 
       function esc(str) {
         return String(str == null ? '' : str)
@@ -1187,8 +1188,79 @@
         }
       }
 
+      function openConsentModal() {
+        const modal = document.getElementById('modalConsent');
+        if (!modal) return;
+        modal.style.display = '';
+        modal.classList.add('show');
+      }
+
+      function closeConsentModal() {
+        const modal = document.getElementById('modalConsent');
+        if (!modal) return;
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+      }
+
+      function getStoredConsentRecord(sid) {
+        if (!sid) return null;
+        if (sessionConsentFallback[sid]) return sessionConsentFallback[sid];
+        try {
+          if (window.MathCoreAuth && typeof MathCoreAuth.getConsentStatus === 'function') {
+            const cs = MathCoreAuth.getConsentStatus(sid);
+            if (cs && (cs.decided || cs.prompted || cs.ts)) {
+              return cs;
+            }
+          }
+        } catch (_) {}
+        try {
+          if (typeof localStorage !== 'undefined') {
+            const raw = localStorage.getItem('MP_V2_CONSENT_' + sid);
+            if (raw) return JSON.parse(raw);
+          }
+        } catch (_) {}
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            const raw = sessionStorage.getItem('MP_V2_CONSENT_' + sid);
+            if (raw) return JSON.parse(raw);
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      function persistConsentRecord(sid, agreed) {
+        if (!sid) return;
+        const rec = {
+          sid: sid,
+          agreed: !!agreed,
+          version: '2026-11-v1',
+          ts: Date.now(),
+          prompted: true,
+          decided: true
+        };
+        sessionConsentFallback[sid] = rec;
+        try {
+          if (window.MathCoreAuth && typeof MathCoreAuth.saveConsentDecision === 'function') {
+            MathCoreAuth.saveConsentDecision(sid, !!agreed);
+          } else if (window.MathCoreAuth && typeof MathCoreAuth.setConsentStatus === 'function') {
+            MathCoreAuth.setConsentStatus(sid, { agreed: !!agreed });
+          }
+        } catch (_) {}
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('MP_V2_CONSENT_' + sid, JSON.stringify(rec));
+          }
+        } catch (_) {}
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem('MP_V2_CONSENT_' + sid, JSON.stringify(rec));
+          }
+        } catch (_) {}
+      }
+
       function onLoginSuccess(student, isFreshLogin) {
         currentStudent = student;
+        stopGateCamera();
         const sid = student.classID + '_' + student.studentID;
         const isSeat98Test = String(student.studentID) === '98' || !!student.directToBank || student.role === 'teacher_test';
         const faceTag = student.faceLoginVerified ? ' · 📸已刷臉留痕' : '';
@@ -1212,10 +1284,10 @@
         }
 
         // Sync D6 consent switch with stored status
+        const existingConsent = getStoredConsentRecord(sid);
         const consentToggle = document.getElementById('consentToggleSwitch');
-        if (consentToggle && window.MathCoreAuth && typeof MathCoreAuth.getConsentStatus === 'function') {
-          const cs = MathCoreAuth.getConsentStatus(sid);
-          if (cs && cs.decided) consentToggle.checked = !!cs.agreed;
+        if (consentToggle && existingConsent && (existingConsent.decided || existingConsent.prompted || existingConsent.ts)) {
+          consentToggle.checked = !!existingConsent.agreed;
         }
 
         // Return routing from mobile full-screen game pages (games/*-mobile.html)
@@ -1236,14 +1308,22 @@
 
         // Seat 98 teacher test account (when launched from teacher preview): go straight to question bank selector
         if (isSeat98Test) {
+          closeConsentModal();
           openPracticeSelector('drill');
           return;
         }
 
         // First-login D6 Research Informed Consent check for regular students
-        const consentRaw = localStorage.getItem('MP_V2_CONSENT_' + sid);
-        if (!consentRaw) {
-          document.getElementById('modalConsent').classList.add('show');
+        let consentNeeded = !existingConsent;
+        try {
+          if (existingConsent && window.MathCoreAuth && typeof MathCoreAuth.needsConsentPrompt === 'function') {
+            consentNeeded = MathCoreAuth.needsConsentPrompt(sid) && !sessionConsentFallback[sid];
+          }
+        } catch (_) {}
+        if (consentNeeded) {
+          openConsentModal();
+        } else {
+          closeConsentModal();
         }
         showScreen('screen-hub');
       }
@@ -1258,8 +1338,11 @@
         if (candPanel) candPanel.classList.add('d-none');
         const faceAlert = document.getElementById('faceFirstAlert');
         if (faceAlert) faceAlert.classList.add('d-none');
-        const changePwdModal = document.getElementById('modalChangeStudentPassword');
-        if (changePwdModal) changePwdModal.classList.remove('show');
+        closeConsentModal();
+        ['modalCheckin', 'modalArena', 'modalChangeStudentPassword'].forEach(function (id) {
+          const m = document.getElementById(id);
+          if (m) m.classList.remove('show');
+        });
         ['stuOldPwdInput', 'stuNewPwdInput', 'stuConfirmPwdInput'].forEach(function (id) {
           const el = document.getElementById(id);
           if (el) el.value = '';
@@ -1275,7 +1358,7 @@
         if (window.MathCoreAuth && typeof MathCoreAuth.logout === 'function') {
           MathCoreAuth.logout();
         } else {
-          localStorage.removeItem('MP_V2_SESSION');
+          try { localStorage.removeItem('MP_V2_SESSION'); } catch (_) {}
         }
         document.getElementById('studentInfoBadge').textContent = '未登入';
         document.getElementById('pointsQuickBadge').textContent = '💎 0 積分';
@@ -1286,16 +1369,17 @@
       }
 
       function confirmConsent(agreed) {
-        if (!currentStudent) return;
-        const sid = currentStudent.classID + '_' + currentStudent.studentID;
-        if (window.MathCoreAuth && typeof MathCoreAuth.saveConsentDecision === 'function') {
-          MathCoreAuth.saveConsentDecision(sid, !!agreed);
-        } else {
-          const rec = { sid: sid, agreed: !!agreed, version: '2026-11-v1', ts: Date.now() };
-          localStorage.setItem('MP_V2_CONSENT_' + sid, JSON.stringify(rec));
+        try {
+          const activeStu = currentStudent || (window.MathCoreAuth && typeof MathCoreAuth.getSession === 'function' ? MathCoreAuth.getSession() : null);
+          if (activeStu && activeStu.classID && activeStu.studentID) {
+            const sid = activeStu.classID + '_' + activeStu.studentID;
+            persistConsentRecord(sid, !!agreed);
+          }
+          const consentToggle = document.getElementById('consentToggleSwitch');
+          if (consentToggle) consentToggle.checked = !!agreed;
+        } finally {
+          closeConsentModal();
         }
-        document.getElementById('consentToggleSwitch').checked = !!agreed;
-        document.getElementById('modalConsent').classList.remove('show');
       }
 
       function toggleConsent(agreed) {

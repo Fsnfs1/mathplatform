@@ -812,7 +812,39 @@ async function runAllTests() {
   }
   console.log('[PASS] 13. Cross-Browser 5B_2 Login, Sheet PWD Parsing Resilience & Sync Guards');
 
-  console.log('=== ALL TESTS PASSED (13/13) ===');
+  // 14. Safari / Storage-Restricted D6 Consent Modal & API Parity
+  {
+    const origLS14 = globalThis.localStorage;
+    globalThis.localStorage = {
+      getItem: () => { throw new Error('SecurityError'); },
+      setItem: () => { throw new Error('QuotaExceededError'); },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      get length() { return 0; }
+    };
+    try {
+      assert.strictEqual(typeof auth.saveConsentDecision, 'function', 'MathCoreAuth must expose saveConsentDecision');
+      const res14 = auth.saveConsentDecision('5B_2', false);
+      assert.strictEqual(res14.decided, true);
+      assert.strictEqual(res14.agreed, false);
+      assert.strictEqual(auth.needsConsentPrompt('5B_2'), false, 'Consent prompt must not loop when localStorage throws QuotaExceededError');
+      const st14 = auth.getConsentStatus('5B_2');
+      assert.strictEqual(st14.decided, true);
+      assert.strictEqual(st14.agreed, false);
+
+      const appSrc14 = fs.readFileSync(path.join(__dirname, '..', 'app.html'), 'utf8');
+      assert.ok(appSrc14.includes('top: 0; right: 0; bottom: 0; left: 0; inset: 0;'), 'app.html modal backdrop must include top/right/bottom/left fallback for Safari');
+      assert.ok(appSrc14.includes('visibility: hidden; pointer-events: none;'), 'app.html hidden modal must disable visibility and pointer-events');
+      assert.ok(appSrc14.includes('id="btnConsentAgree"') && appSrc14.includes('id="btnConsentDecline"'), 'app.html must expose explicit consent buttons');
+      assert.ok(appSrc14.includes('closeConsentModal();'), 'app.html must deterministically close consent modal');
+    } finally {
+      globalThis.localStorage = origLS14;
+    }
+  }
+  console.log('[PASS] 14. Safari / Storage-Restricted D6 Consent Modal & API Parity');
+
+  console.log('=== ALL TESTS PASSED (14/14) ===');
 }
 
 runAllTests().catch(err => {

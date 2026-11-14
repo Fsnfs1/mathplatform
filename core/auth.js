@@ -565,6 +565,7 @@
           parentalConsent: false,
           withdrawn: false,
           prompted: false,
+          decided: false,
         };
       }
       return Object.assign(
@@ -576,6 +577,7 @@
           parentalConsent: false,
           withdrawn: false,
           prompted: true,
+          decided: Boolean(saved.prompted || saved.decided || saved.ts),
         },
         saved
       );
@@ -583,7 +585,7 @@
 
     function needsConsentPrompt(sid) {
       const status = getConsentStatus(sid);
-      if (!status.prompted || !status.ts) return true;
+      if ((!status.prompted && !status.decided) || !status.ts) return true;
       if (status.version !== CONSENT_VERSION) return true;
       return false;
     }
@@ -612,6 +614,7 @@
         parentalConsent: parentalConsent,
         withdrawn: withdrawn,
         prompted: true,
+        decided: true,
         featureAccessBlocked: false,
       };
 
@@ -619,6 +622,10 @@
         STORAGE.setItem(key, updated);
       }
       return updated;
+    }
+
+    function saveConsentDecision(sid, agreed) {
+      return setConsentStatus(sid, { agreed: Boolean(agreed) });
     }
 
     function withdrawConsent(sid) {
@@ -754,6 +761,7 @@
       getConsentStatus: getConsentStatus,
       needsConsentPrompt: needsConsentPrompt,
       setConsentStatus: setConsentStatus,
+      saveConsentDecision: saveConsentDecision,
       withdrawConsent: withdrawConsent,
       isEligibleForResearchExport: isEligibleForResearchExport,
       getClassReps: getClassReps,
