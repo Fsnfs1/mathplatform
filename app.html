@@ -486,6 +486,64 @@
           .replace(/'/g, '&#39;');
       }
 
+      function safeGetSessionStorage(key) {
+        try {
+          if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+            return sessionStorage.getItem(key);
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      function safeSetSessionStorage(key, val) {
+        try {
+          if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+            sessionStorage.setItem(key, val);
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+
+      function safeRemoveSessionStorage(key) {
+        try {
+          if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+            sessionStorage.removeItem(key);
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+
+      function isSafeReturnUrl(urlStr) {
+        if (!urlStr || typeof urlStr !== 'string') return false;
+        const trimmed = urlStr.trim();
+        const lower = trimmed.toLowerCase();
+        // Strictly disallow javascript:, data:, vbscript: schemes
+        if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
+          return false;
+        }
+        // Strictly disallow protocol-relative URLs like "//evil.com"
+        if (trimmed.startsWith('//')) {
+          return false;
+        }
+        try {
+          const parsed = new URL(trimmed, window.location.href);
+          if (parsed.protocol === 'javascript:' || parsed.protocol === 'data:' || parsed.protocol === 'vbscript:') {
+            return false;
+          }
+          if (window.location.origin && window.location.origin !== 'null') {
+            return parsed.origin === window.location.origin && (parsed.protocol === 'http:' || parsed.protocol === 'https:');
+          }
+          if (window.location.protocol === 'file:') {
+            return parsed.protocol === 'file:';
+          }
+          return false;
+        } catch (_) {
+          return false;
+        }
+      }
+
       function init() {
         populateClassSelect();
 
@@ -607,9 +665,15 @@
         // Restore active login session if present and valid student/teacher_test session
         let restored = false;
         try {
-          const saved = (window.MathCoreAuth && typeof MathCoreAuth.getSession === 'function')
+          let saved = (window.MathCoreAuth && typeof MathCoreAuth.getSession === 'function')
             ? MathCoreAuth.getSession()
-            : JSON.parse(localStorage.getItem('MP_V2_SESSION') || 'null');
+            : null;
+          if (!saved && typeof localStorage !== 'undefined') {
+            try { saved = JSON.parse(localStorage.getItem('MP_V2_SESSION') || 'null'); } catch (_) {}
+          }
+          if (!saved && typeof sessionStorage !== 'undefined') {
+            try { saved = JSON.parse(sessionStorage.getItem('MP_V2_SESSION') || 'null'); } catch (_) {}
+          }
           if (saved && saved.token && saved.classID && saved.studentID && (saved.role === 'student' || saved.role === 'teacher_test')) {
             restored = true;
             onLoginSuccess(saved, false);
@@ -617,7 +681,37 @@
         } catch (e) {}
 
         if (!restored) {
-          startGateCamera(true);
+          let shouldAutoStartCamera = true;
+          try {
+            let isPhone = false;
+            try {
+              isPhone = (window.MathCoreUI && typeof MathCoreUI.isPhoneDevice === 'function')
+                ? MathCoreUI.isPhoneDevice()
+                : (typeof isPhoneDevice === 'function' ? isPhoneDevice() : false);
+            } catch (_) {}
+
+            const qs = new URLSearchParams(window.location.search || '');
+            const hashRaw = String(window.location.hash || '').replace(/^#\??/, '');
+            const hashParams = hashRaw.includes('=') ? new URLSearchParams(hashRaw) : null;
+            const pendingGid = safeGetSessionStorage('MP_PENDING_GAME_ID');
+            const pendingRet = safeGetSessionStorage('MP_PENDING_RETURN_URL');
+            const hasGameIntent = !!(
+              qs.get('gameId') ||
+              qs.get('returnUrl') ||
+              qs.get('screen') === 'games' ||
+              hashRaw === 'games' ||
+              (hashParams && (hashParams.get('gameId') || hashParams.get('returnUrl') || hashParams.get('screen') === 'games')) ||
+              pendingGid ||
+              pendingRet
+            );
+            if (isPhone || hasGameIntent) {
+              shouldAutoStartCamera = false;
+            }
+          } catch (_) {}
+
+          if (shouldAutoStartCamera) {
+            startGateCamera(true);
+          }
         }
       }
 
@@ -702,6 +796,26 @@
           try {
             const p = new URLSearchParams(window.location.search || '');
             if (p.get('test_bypass_probe') === '1' || p.get('test_disable_autocamera') === '1') return;
+            const hash = String(window.location.hash || '').replace(/^#\??/, '');
+            const hp = hash.includes('=') ? new URLSearchParams(hash) : null;
+            let isPhone = false;
+            try {
+              isPhone = (window.MathCoreUI && typeof MathCoreUI.isPhoneDevice === 'function')
+                ? MathCoreUI.isPhoneDevice()
+                : (typeof isPhoneDevice === 'function' ? isPhoneDevice() : false);
+            } catch (_) {}
+            const pendingGid = safeGetSessionStorage('MP_PENDING_GAME_ID');
+            const pendingRet = safeGetSessionStorage('MP_PENDING_RETURN_URL');
+            const hasGameIntent = !!(
+              p.get('gameId') ||
+              p.get('returnUrl') ||
+              p.get('screen') === 'games' ||
+              hash === 'games' ||
+              (hp && (hp.get('gameId') || hp.get('returnUrl') || hp.get('screen') === 'games')) ||
+              pendingGid ||
+              pendingRet
+            );
+            if (isPhone || hasGameIntent) return;
           } catch (_) {}
         }
 
@@ -806,7 +920,7 @@
           }
           const photoB64 = snap && (snap.imageBase64 || snap.photoBase64);
           if (photoB64) {
-            sessionStorage.setItem('MP_V2_FACE_TRACE_' + key, photoB64);
+            safeSetSessionStorage('MP_V2_FACE_TRACE_' + key, photoB64);
             if (window.uploadDrivePhoto) {
               window.uploadDrivePhoto({
                 classID: cid,
@@ -968,6 +1082,14 @@
             gateCapturedSnap = null;
             gateCloseCandidates = [];
             gateIsScanning = false;
+            try {
+              const sessJson = JSON.stringify(sess);
+              if (typeof localStorage !== 'undefined') localStorage.setItem('MP_V2_SESSION', sessJson);
+              if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('MP_V2_SESSION', sessJson);
+              if (window.MathCoreStorage && typeof MathCoreStorage.setItem === 'function') {
+                MathCoreStorage.setItem('MP_V2_SESSION', sess);
+              }
+            } catch (_) {}
             setTimeout(function () {
               onLoginSuccess(sess, true);
             }, 350);
@@ -1135,6 +1257,14 @@
           }
           gateCapturedSnap = null;
           gateCloseCandidates = [];
+          try {
+            const sessJson = JSON.stringify(loginResult.sess);
+            if (typeof localStorage !== 'undefined') localStorage.setItem('MP_V2_SESSION', sessJson);
+            if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('MP_V2_SESSION', sessJson);
+            if (window.MathCoreStorage && typeof MathCoreStorage.setItem === 'function') {
+              MathCoreStorage.setItem('MP_V2_SESSION', loginResult.sess);
+            }
+          } catch (_) {}
           onLoginSuccess(loginResult.sess, true);
         }
 
@@ -1290,18 +1420,134 @@
           consentToggle.checked = !!existingConsent.agreed;
         }
 
-        // Return routing from mobile full-screen game pages (games/*-mobile.html)
+        // Return routing and auto-launch from mobile full-screen game pages (games/*-mobile.html) or return routes
         try {
           const qs = new URLSearchParams(window.location.search || '');
-          const hashScreen = String(window.location.hash || '').replace('#', '');
-          const target = qs.get('screen') || (hashScreen === 'games' || hashScreen === 'points' ? hashScreen : '');
-          if (target === 'games' || target === 'points') {
-            if (qs.has('screen') && window.history && history.replaceState) {
-              qs.delete('screen');
-              const rest = qs.toString();
-              history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : ''));
+          const hashRaw = String(window.location.hash || '').replace(/^#\??/, '');
+          const hashParams = hashRaw.includes('=') ? new URLSearchParams(hashRaw) : null;
+
+          let gameId = qs.get('gameId') || '';
+          let returnUrl = qs.get('returnUrl') || '';
+          let target = qs.get('screen') || '';
+
+          if (!gameId && hashParams && hashParams.get('gameId')) gameId = hashParams.get('gameId');
+          if (!returnUrl && hashParams && hashParams.get('returnUrl')) returnUrl = hashParams.get('returnUrl');
+          if (!target && hashParams && hashParams.get('screen')) target = hashParams.get('screen');
+          if (!target && (hashRaw === 'games' || hashRaw === 'points')) target = hashRaw;
+
+          if (typeof sessionStorage !== 'undefined') {
+            try {
+              if (!gameId) {
+                gameId = safeGetSessionStorage('MP_PENDING_GAME_ID') || safeGetSessionStorage('gameId') || '';
+              }
+              if (!returnUrl) {
+                returnUrl = safeGetSessionStorage('MP_PENDING_RETURN_URL') || safeGetSessionStorage('returnUrl') || '';
+              }
+              safeRemoveSessionStorage('MP_PENDING_GAME_ID');
+              safeRemoveSessionStorage('gameId');
+              safeRemoveSessionStorage('MP_PENDING_RETURN_URL');
+              safeRemoveSessionStorage('returnUrl');
+            } catch (_) {}
+          }
+
+          if (!gameId && returnUrl) {
+            try {
+              const parsedReturn = new URL(returnUrl, window.location.href);
+              const rGid = parsedReturn.searchParams.get('gameId');
+              if (rGid) gameId = rGid;
+            } catch (_) {}
+          }
+
+          if (window.history && typeof history.replaceState === 'function') {
+            try {
+              const sensitiveKeys = ['screen', 'gameId', 'returnUrl', 'token', 'sess', 'role', 'classID', 'cid', 'studentID', 'sid', 'seat', 'name'];
+              let urlChanged = false;
+              sensitiveKeys.forEach(function (k) {
+                if (qs.has(k)) {
+                  qs.delete(k);
+                  urlChanged = true;
+                }
+              });
+              let newHash = '';
+              if (window.location.hash) {
+                const rawH = window.location.hash.replace(/^#\??/, '');
+                if (rawH.includes('=')) {
+                  const hp = new URLSearchParams(rawH);
+                  let hashChanged = false;
+                  sensitiveKeys.forEach(function (k) {
+                    if (hp.has(k)) {
+                      hp.delete(k);
+                      hashChanged = true;
+                    }
+                  });
+                  if (hashChanged) {
+                    urlChanged = true;
+                    const remH = hp.toString();
+                    newHash = remH ? '#' + remH : '';
+                  } else {
+                    newHash = window.location.hash;
+                  }
+                } else if (rawH === 'games' || rawH === 'points') {
+                  urlChanged = true;
+                  newHash = '';
+                } else {
+                  newHash = window.location.hash;
+                }
+              }
+              if (urlChanged) {
+                const rest = qs.toString();
+                const cleanUrl = (window.location.pathname || '') + (rest ? '?' + rest : '') + newHash;
+                history.replaceState(history.state || null, document.title || '', cleanUrl || '/');
+              }
+            } catch (_) {}
+          }
+
+          // Direct auto-advance into target game or returnUrl!
+          if (gameId) {
+            closeConsentModal();
+            launchGame(gameId);
+            return;
+          }
+
+          if (returnUrl) {
+            closeConsentModal();
+            try {
+              const targetUrl = new URL(returnUrl, window.location.href);
+              // Security Guard: Prevent Open Redirect & javascript: XSS
+              const isSameOrigin = targetUrl.origin === window.location.origin;
+              const isSafeScheme = targetUrl.protocol === 'http:' || targetUrl.protocol === 'https:' || (window.location.protocol === 'file:' && targetUrl.protocol === 'file:');
+              const trimmed = String(returnUrl).trim().toLowerCase();
+              const isDisallowedScheme = trimmed.startsWith('javascript:') || trimmed.startsWith('data:') || trimmed.startsWith('vbscript:');
+
+              if (!isSameOrigin || !isSafeScheme || isDisallowedScheme) {
+                console.warn('Blocked untrusted or unsafe returnUrl:', returnUrl);
+                openGamesApp();
+                return;
+              }
+              if (student && student.token && !targetUrl.searchParams.get('token')) {
+                targetUrl.searchParams.set('token', student.token);
+                if (student.classID) targetUrl.searchParams.set('classID', student.classID);
+                if (student.studentID) targetUrl.searchParams.set('studentID', String(student.studentID));
+                if (student.name) targetUrl.searchParams.set('name', student.name);
+                targetUrl.searchParams.set('role', student.role || 'student');
+              }
+              window.location.href = targetUrl.toString();
+              return;
+            } catch (_) {
+              openGamesApp();
+              return;
             }
-            if (target === 'games') openGamesApp(); else openPointsApp();
+          }
+
+          if (target === 'games') {
+            closeConsentModal();
+            openGamesApp();
+            return;
+          }
+
+          if (target === 'points') {
+            closeConsentModal();
+            openPointsApp();
             return;
           }
         } catch (e) {}
@@ -1360,12 +1606,15 @@
         } else {
           try { localStorage.removeItem('MP_V2_SESSION'); } catch (_) {}
         }
+        try { sessionStorage.removeItem('MP_V2_SESSION'); } catch (_) {}
         document.getElementById('studentInfoBadge').textContent = '未登入';
         document.getElementById('pointsQuickBadge').textContent = '💎 0 積分';
         document.getElementById('btnNavHub').classList.add('d-none');
         document.getElementById('btnLogout').classList.add('d-none');
         showScreen('screen-gate');
-        startGateCamera(true);
+        if (!isPhoneDevice()) {
+          startGateCamera(true);
+        }
       }
 
       function confirmConsent(agreed) {
@@ -1633,7 +1882,7 @@
 
         if (mode === 'exam') {
           if (currentStudent && currentStudent.faceLoginVerified) {
-            const traceSnap = sessionStorage.getItem('MP_V2_FACE_TRACE_' + currentStudent.classID + '_' + currentStudent.studentID) || null;
+            const traceSnap = safeGetSessionStorage('MP_V2_FACE_TRACE_' + currentStudent.classID + '_' + currentStudent.studentID) || null;
             activeSession.recordCheckin({
               stage: 'start',
               method: 'face_gate_verified',
@@ -1898,7 +2147,7 @@
       function openCheckinModal(stage) {
         checkinStage = stage || 'start';
         if (currentStudent && currentStudent.faceLoginVerified) {
-          const traceSnap = sessionStorage.getItem('MP_V2_FACE_TRACE_' + currentStudent.classID + '_' + currentStudent.studentID) || null;
+          const traceSnap = safeGetSessionStorage('MP_V2_FACE_TRACE_' + currentStudent.classID + '_' + currentStudent.studentID) || null;
           if (activeSession) {
             activeSession.recordCheckin({
               stage: checkinStage,
@@ -2419,21 +2668,91 @@
           openPointsApp();
           return;
         }
-        if (!mobilePath) {
-          const regGames = (window.MathPlatformRegistry && MathPlatformRegistry.games) || [];
+        let found = null;
+        if (!title || !path || !mobilePath) {
+          const regGames = (window.AppRegistry && AppRegistry.games) ||
+                           (window.MathPlatformRegistry && MathPlatformRegistry.games) || [];
           const cfgGames = (window.MathCoreConfig && MathCoreConfig.games && MathCoreConfig.games.catalog) || [];
-          const found = regGames.concat(cfgGames).find(g => g && g.id === gameId && g.mobilePath);
-          mobilePath = found ? found.mobilePath : '';
+          const allGames = regGames.concat(cfgGames);
+          const aliasMap = {
+            '2': 'bash-nim',
+            '328': 'trig-ratio',
+            '4': 'ring-nim',
+            'bash-nim': '2',
+            'trig-ratio': '328',
+            'ring-nim': '4'
+          };
+          const rawGid = String(gameId || '').trim();
+          const altId = aliasMap[rawGid] || '';
+
+          // 1. Exact match on gameId or alias first
+          found = allGames.find(g => g && (g.id === rawGid || (altId && g.id === altId)));
+
+          // 2. Basename or path inclusion fallback if no exact id match
+          if (!found && rawGid) {
+            found = allGames.find(g => {
+              if (!g) return false;
+              const p = (g.path || '').toLowerCase();
+              const mp = (g.mobilePath || '').toLowerCase();
+              const r = rawGid.toLowerCase();
+              const alt = altId.toLowerCase();
+              return p.includes('/' + r + '.') || mp.includes('/' + r + '-') || p.includes(r) || mp.includes(r) ||
+                     (alt && (p.includes('/' + alt + '.') || mp.includes('/' + alt + '-') || p.includes(alt) || mp.includes(alt)));
+            });
+          }
+
+          if (found) {
+            if (!title) title = found.title || found.name || gameId;
+            if (!path) path = found.path || '';
+            if (!mobilePath) mobilePath = found.mobilePath || '';
+            if (found.id && (!gameId || gameId === altId)) gameId = found.id;
+          }
+        }
+        if (!found && !path && !mobilePath) {
+          console.warn('Unknown or unresolvable gameId:', gameId);
+          if (window.MathCoreUI && typeof MathCoreUI.showToast === 'function') {
+            try { MathCoreUI.showToast('⚠️ 找不到指定的遊戲，已為您返回大廳', 'warning'); } catch (_) {}
+          }
+          openGamesApp();
+          return;
         }
         stopGamePlaytimeTracker();
         if (mobilePath && isPhoneDevice()) {
           // Phones: open the genuinely full-screen mobile-native port (it runs its own countdown tracker).
-          window.location.href = mobilePath + '?gameId=' + encodeURIComponent(gameId);
+          try {
+            const sessObj = {
+              token: currentStudent.token || '',
+              classID: currentStudent.classID || '',
+              studentID: currentStudent.studentID || '',
+              name: currentStudent.name || '',
+              role: currentStudent.role || 'student'
+            };
+            const sessJson = JSON.stringify(sessObj);
+            if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.setItem('MP_V2_SESSION', sessJson);
+            }
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('MP_V2_SESSION', sessJson);
+            }
+          } catch (_) {}
+
+          const params = new URLSearchParams();
+          params.set('gameId', gameId);
+          if (currentStudent) {
+            if (currentStudent.token) params.set('token', currentStudent.token);
+            if (currentStudent.classID) params.set('classID', currentStudent.classID);
+            if (currentStudent.studentID) params.set('studentID', String(currentStudent.studentID));
+            if (currentStudent.name) params.set('name', currentStudent.name);
+            params.set('role', currentStudent.role || 'student');
+          }
+          const delim = mobilePath.includes('?') ? '&' : '?';
+          window.location.href = mobilePath + delim + params.toString();
           return;
         }
         activeGameId = gameId;
         gameLastTickTs = Date.now();
         gameWarnShown = false;
+        showScreen('screen-games');
         document.getElementById('activeGameTitle').textContent = `🎮 ${title}（實名玩家：${currentStudent.name}）`;
         document.getElementById('gameIframe').src = path;
         document.getElementById('gameIframeWrap').classList.remove('d-none');

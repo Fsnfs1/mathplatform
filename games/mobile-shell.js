@@ -70,26 +70,196 @@
     });
   }
 
+  function isValidSession(s) {
+    const hasStudentId = s && s.studentID !== undefined && s.studentID !== null && String(s.studentID).trim() !== '';
+    return !!(s && s.token && s.classID && hasStudentId && (s.role === 'student' || s.role === 'teacher_test'));
+  }
+
+  function scrubUrlCredentials() {
+    try {
+      if (root.history && typeof root.history.replaceState === 'function' && root.location) {
+        const sensitiveKeys = ['token', 'classID', 'studentID', 'name', 'role', 'sess', 'cid', 'sid', 'seat'];
+        let urlChanged = false;
+        let newSearch = '';
+        if (root.location.search && root.location.search.length > 1) {
+          const sp = new URLSearchParams(root.location.search);
+          sensitiveKeys.forEach(function (k) {
+            if (sp.has(k)) {
+              sp.delete(k);
+              urlChanged = true;
+            }
+          });
+          const rem = sp.toString();
+          newSearch = rem ? '?' + rem : '';
+        } else if (root.location.search) {
+          newSearch = root.location.search;
+        }
+        let newHash = '';
+        if (root.location.hash) {
+          const rawH = root.location.hash.replace(/^#\??/, '');
+          if (rawH.includes('=')) {
+            const hp = new URLSearchParams(rawH);
+            let hashChanged = false;
+            sensitiveKeys.forEach(function (k) {
+              if (hp.has(k)) {
+                hp.delete(k);
+                hashChanged = true;
+              }
+            });
+            if (hashChanged) {
+              urlChanged = true;
+              const remH = hp.toString();
+              newHash = remH ? '#' + remH : '';
+            } else {
+              newHash = root.location.hash;
+            }
+          } else {
+            newHash = root.location.hash;
+          }
+        }
+        if (urlChanged) {
+          const pathname = root.location.pathname || '';
+          const cleanUrl = pathname + newSearch + newHash;
+          root.history.replaceState(root.history.state || null, doc ? doc.title : '', cleanUrl || '/');
+        }
+      }
+    } catch (_) {}
+  }
+
   function readSession() {
+    // 1. MathCoreAuth.requireAuth / getSession
     try {
       if (root.MathCoreAuth && typeof root.MathCoreAuth.requireAuth === 'function') {
-        return root.MathCoreAuth.requireAuth('student');
+        const s = root.MathCoreAuth.requireAuth('student');
+        if (isValidSession(s)) {
+          scrubUrlCredentials();
+          return s;
+        }
       }
-    } catch (e) {
-      return null;
+    } catch (_) {
+      // Do not abort; fall through to multi-channel storage and URL checks
     }
+
     try {
-      const s = JSON.parse(root.localStorage.getItem('MP_V2_SESSION') || 'null');
-      if (s && s.token && (s.role === 'student' || s.role === 'teacher_test')) return s;
-    } catch (e) {}
+      if (root.MathCoreAuth && typeof root.MathCoreAuth.getSession === 'function') {
+        const s = root.MathCoreAuth.getSession();
+        if (isValidSession(s)) {
+          scrubUrlCredentials();
+          return s;
+        }
+      }
+    } catch (_) {}
+
+    // 2. sessionStorage
+    try {
+      if (root.sessionStorage) {
+        const raw = root.sessionStorage.getItem('MP_V2_SESSION');
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (isValidSession(s)) {
+            try { if (root.localStorage && !root.localStorage.getItem('MP_V2_SESSION')) root.localStorage.setItem('MP_V2_SESSION', raw); } catch (_) {}
+            scrubUrlCredentials();
+            return s;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 3. localStorage
+    try {
+      if (root.localStorage) {
+        const raw = root.localStorage.getItem('MP_V2_SESSION');
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (isValidSession(s)) {
+            try { if (root.sessionStorage && !root.sessionStorage.getItem('MP_V2_SESSION')) root.sessionStorage.setItem('MP_V2_SESSION', raw); } catch (_) {}
+            scrubUrlCredentials();
+            return s;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 4. URL query or hash parameters (hydrate session across WebView boundaries)
+    try {
+      let params = null;
+      if (root.location) {
+        if (root.location.search && root.location.search.length > 1) {
+          params = new URLSearchParams(root.location.search);
+        }
+        if ((!params || !params.get('token')) && root.location.hash) {
+          const hashStr = root.location.hash.replace(/^#\??/, '');
+          if (hashStr.includes('=')) {
+            params = new URLSearchParams(hashStr);
+          }
+        }
+      }
+      if (params) {
+        let s = null;
+        const sessRaw = params.get('sess');
+        if (sessRaw) {
+          try {
+            s = JSON.parse(decodeURIComponent(sessRaw));
+          } catch (_) {
+            try { s = JSON.parse(sessRaw); } catch (_) {}
+          }
+        }
+        if (!isValidSession(s)) {
+          const token = params.get('token');
+          const classID = params.get('classID') || params.get('cid');
+          const studentID = params.get('studentID') || params.get('sid') || params.get('seat');
+          const name = params.get('name') || '';
+          const role = params.get('role') || 'student';
+          const hasStudentId = studentID !== undefined && studentID !== null && String(studentID).trim() !== '';
+          if (token && classID && hasStudentId) {
+            s = {
+              token: token,
+              classID: classID,
+              studentID: isNaN(Number(studentID)) ? studentID : Number(studentID),
+              name: name,
+              role: role
+            };
+          }
+        }
+        if (isValidSession(s)) {
+          try {
+            const serialized = JSON.stringify(s);
+            if (root.sessionStorage) root.sessionStorage.setItem('MP_V2_SESSION', serialized);
+            if (root.localStorage) root.localStorage.setItem('MP_V2_SESSION', serialized);
+            if (root.MathCoreStorage && typeof root.MathCoreStorage.setItem === 'function') {
+              root.MathCoreStorage.setItem('MP_V2_SESSION', s);
+            }
+          } catch (_) {}
+          scrubUrlCredentials();
+          return s;
+        }
+      }
+    } catch (_) {}
+
     return null;
   }
 
   function renderAuthGate() {
+    let gateUrl = LOBBY_URL;
+    let gid = '';
+    let currentUrl = '';
+    try {
+      gid = (opts && opts.gameId) || (root.location && root.location.search && new URLSearchParams(root.location.search).get('gameId')) || '';
+      currentUrl = (root.location && root.location.href) || '';
+      const params = new URLSearchParams();
+      params.set('screen', 'games');
+      if (gid) params.set('gameId', gid);
+      if (currentUrl) params.set('returnUrl', currentUrl);
+      gateUrl = '../app.html?' + params.toString();
+
+      if (gid && root.sessionStorage) root.sessionStorage.setItem('MP_PENDING_GAME_ID', gid);
+      if (currentUrl && root.sessionStorage) root.sessionStorage.setItem('MP_PENDING_RETURN_URL', currentUrl);
+    } catch (_) {}
+
     const g = doc.createElement('div');
     g.id = 'mgs-auth-gate';
     g.innerHTML = '<h2>🔒 請先登入</h2><p>遊戲需要實名學生帳號登入後才能遊玩。</p>' +
-      '<a href="' + LOBBY_URL + '">🏠 前往登入 / 遊戲大廳</a>';
+      '<a href="' + esc(gateUrl) + '">🏠 前往登入 / 遊戲大廳</a>';
     doc.body.appendChild(g);
   }
 
@@ -245,7 +415,8 @@
       opts = options || {};
       doc.body.classList.add('mgs-body');
       const sess = readSession();
-      if (!sess || !sess.classID || !sess.studentID) {
+      const hasValidSeat = sess && sess.studentID !== undefined && sess.studentID !== null && String(sess.studentID).trim() !== '';
+      if (!sess || !sess.classID || !hasValidSeat) {
         renderAuthGate();
         try { if (typeof opts.onLockout === 'function') opts.onLockout(); } catch (e) {}
         return false;
