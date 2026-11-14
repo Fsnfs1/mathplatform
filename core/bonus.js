@@ -497,7 +497,81 @@
       const rec = getLocalJson(key, { usedMs: 0, redeemedExtraMs: 0 });
       rec.usedMs = Math.max(0, (rec.usedMs || 0) + Math.max(0, Number(addMs || 0)));
       setLocalJson(key, rec);
+      // Throttled cloud upload: every 60s of accumulated play
+      if (rec.usedMs - (this._lastPushedMs[sid] || 0) >= 60000) this.pushPlaytime(sid);
       return this.getPlaytimeStatus(sid);
+    },
+
+    // ---------------------------------------------------------------------
+    // Cross-device daily playtime (Form row: dateID = "GTIME|<date>|U:<usedMs>|R:<redeemedMs>|T:<ts>")
+    // ---------------------------------------------------------------------
+    _lastPushedMs: {},
+
+    pushPlaytime: function (sid) {
+      try {
+        const formUrl = CONFIG && CONFIG.endpoints && CONFIG.endpoints.googleFormUrl;
+        const f = CONFIG && CONFIG.endpoints && CONFIG.endpoints.formFields;
+        if (!sid || !formUrl || !f || typeof fetch !== 'function') return;
+        const idx = String(sid).lastIndexOf('_');
+        if (idx <= 0) return;
+        const rec = getLocalJson(this._timeKey(sid), { usedMs: 0, redeemedExtraMs: 0 });
+        if (!rec.usedMs) return;
+        this._lastPushedMs[sid] = rec.usedMs;
+        const body = new URLSearchParams();
+        body.set(f.classID, String(sid).slice(0, idx).toUpperCase());
+        body.set(f.studentID, String(sid).slice(idx + 1));
+        body.set(f.dateID, 'GTIME|' + getMacauDateParts().dateStr + '|U:' + Math.round(rec.usedMs) +
+          '|R:' + Math.round(rec.redeemedExtraMs || 0) + '|T:' + Date.now());
+        body.set(f.score, 'GAME_TIME');
+        fetch(formUrl, {
+          method: 'POST', mode: 'no-cors', keepalive: true,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        }).catch(function () {});
+      } catch (e) {}
+    },
+
+    /** Pull today's max usage for this student from all devices; local = max(local, remote). */
+    syncRemotePlaytime: function (sid) {
+      const self = this;
+      return this._fetchSheetRows().then(function (rows) {
+        const idx = String(sid).lastIndexOf('_');
+        const cid = String(sid).slice(0, idx).toUpperCase();
+        const stu = String(sid).slice(idx + 1);
+        const today = 'GTIME|' + getMacauDateParts().dateStr + '|';
+        let maxU = 0, maxR = 0;
+        rows.forEach(function (r) {
+          const did = String((r && r.dateID) || '');
+          if (did.indexOf(today) !== 0) return;
+          if (String(r.classID || '').trim().toUpperCase() !== cid || String(r.studentID || '').trim() !== stu) return;
+          const u = did.match(/\|U:(\d+)/), rr = did.match(/\|R:(\d+)/);
+          if (u) maxU = Math.max(maxU, Number(u[1]));
+          if (rr) maxR = Math.max(maxR, Number(rr[1]));
+        });
+        const key = self._timeKey(sid);
+        const rec = getLocalJson(key, { usedMs: 0, redeemedExtraMs: 0 });
+        if (maxU > (rec.usedMs || 0) || maxR > (rec.redeemedExtraMs || 0)) {
+          rec.usedMs = Math.max(rec.usedMs || 0, maxU);
+          rec.redeemedExtraMs = Math.max(rec.redeemedExtraMs || 0, maxR);
+          setLocalJson(key, rec);
+        }
+        self._lastPushedMs[sid] = Math.max(self._lastPushedMs[sid] || 0, maxU);
+        return self.getPlaytimeStatus(sid);
+      }).catch(function () { return self.getPlaytimeStatus(sid); });
+    },
+
+    _rowsCache: null,
+    _fetchSheetRows: function () {
+      const self = this;
+      if (self._rowsCache && Date.now() - self._rowsCache.ts < 20000) return self._rowsCache.p;
+      const gasUrl = CONFIG && CONFIG.endpoints && CONFIG.endpoints.gasSheetReaderUrl;
+      if (!gasUrl || typeof fetch !== 'function') return Promise.resolve([]);
+      const p = fetch(gasUrl, { method: 'GET', mode: 'cors', redirect: 'follow', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (json) { return Array.isArray(json) ? json : (json && (json.data || json.rows)) || []; })
+        .catch(function () { return []; });
+      self._rowsCache = { ts: Date.now(), p: p };
+      return p;
     },
 
     addRedeemedMinutes: function (sid, minutes) {
@@ -684,12 +758,8 @@
     /** Fetch all GAME rows from the Sheet, cache per game, return merged top10 for gameId. */
     syncRemoteBoard: function (gameId) {
       const self = this;
-      const gasUrl = CONFIG && CONFIG.endpoints && CONFIG.endpoints.gasSheetReaderUrl;
-      if (!gasUrl || typeof fetch !== 'function') return Promise.resolve(self.getTop10(gameId));
-      return fetch(gasUrl, { method: 'GET', mode: 'cors', redirect: 'follow', cache: 'no-store' })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (json) {
-          const rows = Array.isArray(json) ? json : (json && (json.data || json.rows)) || [];
+      return this._fetchSheetRows()
+        .then(function (rows) {
           const byGame = {};
           rows.forEach(function (r) {
             const did = String((r && r.dateID) || '');

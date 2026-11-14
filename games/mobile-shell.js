@@ -350,6 +350,7 @@
     if (locked) return;
     locked = true;
     stopTimer(false);
+    try { const bl = bridge(); if (bl && typeof bl.pushPlaytime === 'function') bl.pushPlaytime(sid); } catch (e) {}
     try { if (typeof opts.onLockout === 'function') opts.onLockout(); } catch (e) {}
     const o = doc.createElement('div');
     o.id = 'mgs-lock-overlay';
@@ -407,9 +408,13 @@
     }
     if (flush && !locked && lastTick && doc.visibilityState !== 'hidden') {
       const delta = Math.min(5000, Math.max(0, Date.now() - lastTick));
-      if (delta > 0) bridge().recordPlayDuration(sid, delta);
+      const b = bridge();
+      if (delta > 0) { if (b) b.recordPlayDuration(sid, delta); else _localTick(delta); }
     }
     lastTick = 0;
+    if (flush) {
+      try { const b2 = bridge(); if (b2 && typeof b2.pushPlaytime === 'function') b2.pushPlaytime(sid); } catch (e) {}
+    }
   }
 
   function onVisibility() {
@@ -509,6 +514,14 @@
       try {
         const gb = bridge();
         if (gb && typeof gb.syncRemoteBoard === 'function' && opts.gameId) gb.syncRemoteBoard(opts.gameId);
+        if (gb && typeof gb.syncRemotePlaytime === 'function') {
+          gb.syncRemotePlaytime(sid).then(function (rst) {
+            if (!rst || locked) return;
+            updateHud(rst);
+            if (rst.warn) showWarn();
+            if (rst.locked || rst.remainingMs <= 0) lockout();
+          });
+        }
       } catch (e) {}
       doc.addEventListener('visibilitychange', onVisibility);
       root.addEventListener('pagehide', function () {

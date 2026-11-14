@@ -450,7 +450,7 @@
   <script src="core/ui.js"></script>
   <script src="core/content.js"></script>
   <script src="core/engine.js"></script>
-  <script src="core/bonus.js?v=20261114c"></script>
+  <script src="core/bonus.js?v=20261114d"></script>
   <script src="js/persistence.js"></script>
 
   <script>
@@ -2623,12 +2623,21 @@
             MathCoreBonus.GameBridge.recordPlayDuration(sid, elapsed, activeGameId);
           }
         }
+        if (activeGameId && currentStudent && window.MathCoreBonus && typeof MathCoreBonus.GameBridge.pushPlaytime === 'function') {
+          try { MathCoreBonus.GameBridge.pushPlaytime(currentStudent.classID + '_' + currentStudent.studentID); } catch (e) {}
+        }
         activeGameId = null;
         gameLastTickTs = 0;
       }
 
       function openGamesApp() {
         if (!currentStudent) return;
+        try {
+          if (window.MathCoreBonus && typeof MathCoreBonus.GameBridge.syncRemotePlaytime === 'function') {
+            MathCoreBonus.GameBridge.syncRemotePlaytime(currentStudent.classID + '_' + currentStudent.studentID)
+              .then(function () { try { updateGamePlaytimeBadge(); } catch (e) {} });
+          }
+        } catch (e) {}
         teardownGameIframe();
         const st = updateGamePlaytimeBadge() || { locked: false };
         const regGames = (window.MathPlatformRegistry && MathPlatformRegistry.games) || [];
