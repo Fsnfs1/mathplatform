@@ -159,7 +159,7 @@
       <div class="hub-card" onclick="AppUI.openPointsApp()">
         <div class="fs-3 mb-1">💎</div>
         <h6 class="fw-bold mb-1">A13 積分中心 & 商城</h6>
-        <p class="text-muted small mb-0">答題賺積分，兌換小測加分、兌換遊戲時長、積分商城購物</p>
+        <p class="text-muted small mb-0">答題賺積分，兌換小測加分、兌換遊戲時長、積分商城購物｜🎁 每日登入 +1 積分（每日僅 1 次）</p>
       </div>
       <div class="hub-card" onclick="AppUI.openGamesApp()">
         <div class="fs-3 mb-1">🎮</div>
@@ -295,6 +295,7 @@
   <section id="screen-points" class="app-screen">
     <div class="card shadow-sm border-0 p-4">
       <h5 class="fw-bold mb-3">💎 A13 積分交換與積分商城</h5>
+      <div class="small text-muted mb-2">🎁 每日登入獎勵：每天首次登入自動 +1 積分（每日僅 1 次，以澳門時間計）。</div>
       <div class="row g-3 mb-4">
         <div class="col-md-4">
           <div class="p-3 bg-primary text-white rounded">
@@ -1398,6 +1399,22 @@
         } catch (_) {}
       }
 
+      function awardDailyLoginPoint(sid) {
+        try {
+          if (!window.MathCoreBonus || !MathCoreBonus.PointsLedger) return;
+          const PL = MathCoreBonus.PointsLedger;
+          const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); // Macau date
+          const already = (PL.getLedger(sid).entries || []).some(function (e) {
+            return e.sourceType === 'dailyLogin' && e.dateStr === today;
+          });
+          if (already) return;
+          const res = PL.awardPoints(sid, 'dailyLogin', 1, { reason: '每日登入獎勵' });
+          if (res && res.awarded > 0 && window.MathCoreUI && typeof MathCoreUI.showToast === 'function') {
+            try { MathCoreUI.showToast('🎁 每日登入獎勵 +1 積分', 'success'); } catch (_) {}
+          }
+        } catch (_) {}
+      }
+
       function onLoginSuccess(student, isFreshLogin) {
         currentStudent = student;
         stopGateCamera();
@@ -1412,6 +1429,9 @@
         if (btnChangePwd) {
           btnChangePwd.classList.toggle('d-none', isSeat98Test);
         }
+
+        // Daily login reward: +1 point, at most once per day (Macau date, UTC+8)
+        if (!isSeat98Test) awardDailyLoginPoint(sid);
 
         // Immediately flush any pending outbox items when online in Macau
         if (window.MathCoreSync && typeof MathCoreSync.flushNow === 'function') {
