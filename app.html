@@ -362,6 +362,16 @@
     </div>
   </div>
 
+  <!-- Modal 1b: Teacher Notices (shown after D6, must acknowledge each) -->
+  <div id="modalNotice" class="modal-backdrop-custom" role="dialog" aria-modal="true" aria-labelledby="modalNoticeTitle" style="z-index:10600;">
+    <div class="modal-card">
+      <div class="small text-muted mb-1" id="modalNoticeCounter"></div>
+      <h5 id="modalNoticeTitle" class="fw-bold mb-2">📢 老師通知</h5>
+      <div id="modalNoticeBody" class="small" style="white-space:pre-wrap; max-height:55vh; overflow-y:auto;"></div>
+      <button id="btnNoticeAck" type="button" class="btn btn-primary w-100 fw-bold py-2 mt-3" style="min-height:44px; touch-action:manipulation;" onclick="AppUI.ackNotice()">✅ 我已閱讀，繼續</button>
+    </div>
+  </div>
+
   <!-- Modal 2: A4 Exam 2-Choose-1 Photo Check-in (Face Photo OR Signed+Dated Scratch Paper) -->
   <div id="modalCheckin" class="modal-backdrop-custom">
     <div class="modal-card">
@@ -1570,6 +1580,7 @@
           openConsentModal();
         } else {
           closeConsentModal();
+          startNoticeQueue();
         }
         showScreen('screen-hub');
       }
@@ -1618,6 +1629,8 @@
       }
 
       function confirmConsent(agreed) {
+        const consentEl = document.getElementById('modalConsent');
+        const wasPrompted = !!(consentEl && consentEl.classList.contains('show'));
         try {
           const activeStu = currentStudent || (window.MathCoreAuth && typeof MathCoreAuth.getSession === 'function' ? MathCoreAuth.getSession() : null);
           if (activeStu && activeStu.classID && activeStu.studentID) {
@@ -1628,11 +1641,66 @@
           if (consentToggle) consentToggle.checked = !!agreed;
         } finally {
           closeConsentModal();
+          if (wasPrompted) startNoticeQueue();
         }
       }
 
       function toggleConsent(agreed) {
         confirmConsent(agreed);
+      }
+
+      // ===== Teacher notice popups (after D6; each must be acknowledged) =====
+      let noticeQueue = [];
+      function getAllNotices() {
+        const byId = {};
+        (Array.isArray(window.MP_NOTICES) ? window.MP_NOTICES : []).forEach(function (n) { if (n && n.id) byId[n.id] = n; });
+        try {
+          const local = JSON.parse(localStorage.getItem('MP_V2_NOTICES') || '[]');
+          if (Array.isArray(local)) local.forEach(function (n) {
+            if (n && n.id && (!byId[n.id] || (n.updatedAt || 0) >= (byId[n.id].updatedAt || 0))) byId[n.id] = n;
+          });
+        } catch (_) {}
+        return Object.keys(byId).map(function (k) { return byId[k]; })
+          .sort(function (a, b) { return (a.publishedAt || 0) - (b.publishedAt || 0); });
+      }
+      function noticeAckKey(stu) { return 'MP_V2_NOTICE_ACK_' + String(stu.classID + '_' + stu.studentID).toUpperCase(); }
+      function readNoticeAcks(stu) {
+        try { return JSON.parse(localStorage.getItem(noticeAckKey(stu)) || '{}') || {}; } catch (_) { return {}; }
+      }
+      function startNoticeQueue() {
+        const stu = currentStudent || (window.MathCoreAuth && typeof MathCoreAuth.getSession === 'function' ? MathCoreAuth.getSession() : null);
+        if (!stu || !stu.classID) return;
+        const cls = String(stu.classID).toUpperCase();
+        const acks = readNoticeAcks(stu);
+        noticeQueue = getAllNotices().filter(function (n) {
+          if (!n.enabled) return false;
+          if (Array.isArray(n.classes) && n.classes.length && n.classes.map(function (c) { return String(c).toUpperCase(); }).indexOf(cls) === -1) return false;
+          if (n.everyLogin) return true;
+          return acks[n.id] !== n.updatedAt;
+        });
+        noticeQueue.total = noticeQueue.length;
+        showNextNotice();
+      }
+      function showNextNotice() {
+        const modal = document.getElementById('modalNotice');
+        if (!modal) return;
+        if (!noticeQueue.length) { modal.classList.remove('show'); modal.style.display = 'none'; return; }
+        const n = noticeQueue[0];
+        document.getElementById('modalNoticeTitle').textContent = '📢 ' + (n.title || '老師通知');
+        document.getElementById('modalNoticeBody').textContent = n.body || '';
+        document.getElementById('modalNoticeCounter').textContent = noticeQueue.total > 1 ? ('通知 ' + (noticeQueue.total - noticeQueue.length + 1) + ' / ' + noticeQueue.total) : '';
+        modal.style.display = '';
+        modal.classList.add('show');
+      }
+      function ackNotice() {
+        const n = noticeQueue.shift();
+        const stu = currentStudent || (window.MathCoreAuth && typeof MathCoreAuth.getSession === 'function' ? MathCoreAuth.getSession() : null);
+        if (n && stu && stu.classID) {
+          const acks = readNoticeAcks(stu);
+          acks[n.id] = n.updatedAt;
+          try { localStorage.setItem(noticeAckKey(stu), JSON.stringify(acks)); } catch (_) {}
+        }
+        showNextNotice();
       }
 
       function updateNetBadge(state) {
@@ -3001,6 +3069,7 @@
         handleGateLogin: handleGateLogin,
         logout: logout,
         confirmConsent: confirmConsent,
+        ackNotice: ackNotice,
         toggleConsent: toggleConsent,
         openPracticeSelector: openPracticeSelector,
         startQuizFromBtn: startQuizFromBtn,

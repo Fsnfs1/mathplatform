@@ -324,10 +324,37 @@
       <pre id="researchPreviewOut" class="code-out mt-3 d-none"></pre>
     </div>
 
+    <!-- 6. Student Login Notice Popups (multi-enable, must be acknowledged) -->
+    <div id="secNotices" class="section-card">
+      <h5 class="fw-bold mb-2">📢 學生登入通知彈窗管理</h5>
+      <div class="form-text mb-2">學生登入後，在 D6 研究倫理說明之後依次彈出所有「已開啟」的通知，須逐一點擊「我已閱讀」後才能繼續。可同時開啟多個通知；修改內容後學生會再次看到。</div>
+      <input type="hidden" id="noticeEditId" />
+      <div class="row g-2 mb-2">
+        <div class="col-md-8"><input id="noticeTitleInput" class="form-control form-control-sm" placeholder="通知標題" /></div>
+        <div class="col-md-4"><input id="noticeClassesInput" class="form-control form-control-sm" placeholder="適用班級 (留空=全部，例: 4C,4D)" /></div>
+        <div class="col-12"><textarea id="noticeBodyInput" class="form-control form-control-sm" rows="4" placeholder="通知內容（支援換行）"></textarea></div>
+        <div class="col-12 d-flex flex-wrap gap-3 align-items-center">
+          <label class="small"><input type="checkbox" id="noticeEveryLogin" /> 每次登入都彈出（否則每位學生確認一次）</label>
+          <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="TeacherApp.saveNotice(false)">💾 儲存為待發布</button>
+          <button class="btn btn-sm btn-primary fw-bold" onclick="TeacherApp.saveNotice(true)">🚀 儲存並開啟</button>
+          <button class="btn btn-sm btn-link" onclick="TeacherApp.resetNoticeForm()">清空表單</button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle small mb-2">
+          <thead><tr><th>標題</th><th>班級</th><th>狀態</th><th>更新時間</th><th>開啟/關閉</th><th>操作</th></tr></thead>
+          <tbody id="noticeListBody"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-sm btn-outline-dark fw-bold" onclick="TeacherApp.exportNoticesJs()">📤 導出 js/notices.js（部署後所有設備生效）</button>
+      <div class="form-text">註：通知即時儲存於本機瀏覽器 <code>MP_V2_NOTICES</code>（同一設備立即生效）；如需讓學生其他設備看到，請導出並以下載的檔案覆蓋倉庫中的 <code>js/notices.js</code> 後部署。</div>
+    </div>
+
   </div>
 
   <!-- Load Read-Only Roster & Modular Core -->
   <script src="js/roster.js"></script>
+  <script src="js/notices.js"></script>
   <script src="js/exam_1113_scores.js"></script>
   <script src="core/config.js"></script>
   <script src="core/crypto.js"></script>
@@ -1324,7 +1351,98 @@
         }
       }
 
+      // ===== Student login notice popups =====
+      const NOTICE_KEY = 'MP_V2_NOTICES';
+      function loadNotices() {
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem(NOTICE_KEY) || 'null'); } catch (_) { list = null; }
+        if (!Array.isArray(list)) list = Array.isArray(window.MP_NOTICES) ? JSON.parse(JSON.stringify(window.MP_NOTICES)) : [];
+        return list;
+      }
+      function storeNotices(list) {
+        localStorage.setItem(NOTICE_KEY, JSON.stringify(list));
+        renderNotices();
+      }
+      function escHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      }
+      function renderNotices() {
+        const body = document.getElementById('noticeListBody');
+        if (!body) return;
+        const list = loadNotices();
+        if (!list.length) { body.innerHTML = '<tr><td colspan="6" class="text-muted">暫無通知</td></tr>'; return; }
+        body.innerHTML = list.map(n => {
+          const status = n.enabled ? '<span class="badge bg-success">已開啟</span>'
+            : (n.publishedAt ? '<span class="badge bg-secondary">已關閉（曾發布）</span>' : '<span class="badge bg-warning text-dark">待發布</span>');
+          return '<tr><td>' + escHtml(n.title) + '</td><td>' + escHtml((n.classes || []).join(',') || '全部') + '</td><td>' + status +
+            '</td><td>' + escHtml(new Date(n.updatedAt).toLocaleString()) + '</td>' +
+            '<td><div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" ' + (n.enabled ? 'checked' : '') +
+            ' onchange="TeacherApp.toggleNotice(\'' + n.id + '\', this.checked)"></div></td>' +
+            '<td><button class="btn btn-sm btn-outline-primary py-0" onclick="TeacherApp.editNotice(\'' + n.id + '\')">編輯</button> ' +
+            '<button class="btn btn-sm btn-outline-danger py-0" onclick="TeacherApp.deleteNotice(\'' + n.id + '\')">刪除</button></td></tr>';
+        }).join('');
+      }
+      function resetNoticeForm() {
+        ['noticeEditId', 'noticeTitleInput', 'noticeBodyInput', 'noticeClassesInput'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        const ev = document.getElementById('noticeEveryLogin'); if (ev) ev.checked = false;
+      }
+      function saveNotice(enable) {
+        const title = document.getElementById('noticeTitleInput').value.trim();
+        const body = document.getElementById('noticeBodyInput').value.trim();
+        if (!title || !body) { alert('請填寫通知標題及內容'); return; }
+        const classes = document.getElementById('noticeClassesInput').value.split(/[,，\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        const everyLogin = document.getElementById('noticeEveryLogin').checked;
+        const editId = document.getElementById('noticeEditId').value;
+        const list = loadNotices();
+        const now = Date.now();
+        let n = editId ? list.find(x => x.id === editId) : null;
+        if (!n) { n = { id: 'N' + now.toString(36), createdAt: now, enabled: false, publishedAt: 0 }; list.unshift(n); }
+        Object.assign(n, { title, body, classes, everyLogin, updatedAt: now });
+        if (enable) { n.enabled = true; n.publishedAt = n.publishedAt || now; }
+        storeNotices(list);
+        resetNoticeForm();
+      }
+      function toggleNotice(id, on) {
+        const list = loadNotices();
+        const n = list.find(x => x.id === id);
+        if (!n) return;
+        n.enabled = !!on;
+        if (on && !n.publishedAt) n.publishedAt = Date.now();
+        storeNotices(list);
+      }
+      function editNotice(id) {
+        const n = loadNotices().find(x => x.id === id);
+        if (!n) return;
+        document.getElementById('noticeEditId').value = n.id;
+        document.getElementById('noticeTitleInput').value = n.title || '';
+        document.getElementById('noticeBodyInput').value = n.body || '';
+        document.getElementById('noticeClassesInput').value = (n.classes || []).join(',');
+        document.getElementById('noticeEveryLogin').checked = !!n.everyLogin;
+        document.getElementById('secNotices').scrollIntoView({ behavior: 'smooth' });
+      }
+      function deleteNotice(id) {
+        if (!confirm('確定刪除此通知？')) return;
+        storeNotices(loadNotices().filter(x => x.id !== id));
+      }
+      function exportNoticesJs() {
+        const content = '/* Auto-generated by teacher.html — student login notice popups */\nwindow.MP_NOTICES = ' +
+          JSON.stringify(loadNotices(), null, 2) + ';\n';
+        const blob = new Blob([content], { type: 'text/javascript' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'notices.js';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+      window.addEventListener('DOMContentLoaded', renderNotices);
+
       return {
+        saveNotice: saveNotice,
+        toggleNotice: toggleNotice,
+        editNotice: editNotice,
+        deleteNotice: deleteNotice,
+        resetNoticeForm: resetNoticeForm,
+        exportNoticesJs: exportNoticesJs,
         checkGateOnBoot: checkGateOnBoot,
         handleTeacherLogin: handleTeacherLogin,
         handleRepLogin: handleRepLogin,
