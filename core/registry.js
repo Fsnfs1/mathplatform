@@ -18,7 +18,7 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
-  const DEFAULT_CLASSES = ['4C', '4D', '5B', '5C'];
+  const DEFAULT_CLASSES = ['4C', '4D', '5B', '5C', '高階數學建模'];
 
   const DEFAULT_BANKS = [
     {
@@ -26,7 +26,7 @@
       title: '高一 1023 函數題庫',
       globalVar: 'QUESTIONS_4CD1023',
       script: 'js/questions_4cd1023.js',
-      classes: ['4C', '4D'],
+      classes: ['4C', '4D', '高階數學建模'],
     },
     {
       id: '4cd_1102',
@@ -37,14 +37,14 @@
       script: 'js/bank_4cd_t2.js',
       adaptiveVar: 'BANK_4CD_1102_ADAPTIVE',
       adaptiveScript: 'js/bank_4cd_1102_adaptive.js',
-      classes: ['4C', '4D'],
+      classes: ['4C', '4D', '高階數學建模'],
     },
     {
       id: '5bc_1102',
       title: '高二 1102 空間幾何與數列題庫',
       globalVar: 'BANK_5BC1102',
       script: 'js/bank_5bc1102.js',
-      classes: ['5B', '5C'],
+      classes: ['5B', '5C', '高階數學建模'],
     },
   ];
 
@@ -54,7 +54,7 @@
       title: '4CD 1023 函數自適應刷題',
       bankId: '4cd_1023',
       mode: 'drill',
-      classes: ['4C', '4D'],
+      classes: ['4C', '4D', '高階數學建模'],
       timeLimitMin: 15,
       feedbackMode: 'immediate',
       adaptive: Object.assign(
@@ -74,7 +74,7 @@
       title: '4CD 1102 函數進階聯網刷題',
       bankId: '4cd_1102',
       mode: 'drill',
-      classes: ['4C', '4D'],
+      classes: ['4C', '4D', '高階數學建模'],
       timeLimitMin: 15,
       feedbackMode: 'immediate',
       adaptive: Object.assign(
@@ -95,7 +95,7 @@
       bankId: '4cd_1102',
       subKey: 'exam',
       mode: 'exam',
-      classes: ['4C', '4D'],
+      classes: ['4C', '4D', '高階數學建模'],
       timeLimitMin: 15,
       feedbackMode: 'after_submit',
       adaptive: false,
@@ -106,7 +106,7 @@
       title: '5BC 1102 聯網自適應刷題',
       bankId: '5bc_1102',
       mode: 'drill',
-      classes: ['5B', '5C'],
+      classes: ['5B', '5C', '高階數學建模'],
       timeLimitMin: 15,
       feedbackMode: 'immediate',
       adaptive: Object.assign(
@@ -120,7 +120,7 @@
       title: '5BC 1102 隨堂測驗',
       bankId: '5bc_1102',
       mode: 'exam',
-      classes: ['5B', '5C'],
+      classes: ['5B', '5C', '高階數學建模'],
       timeLimitMin: 15,
       feedbackMode: 'after_submit',
       adaptive: true,
@@ -132,7 +132,7 @@
     {
       id: 'exam_1113_t2',
       title: '1113 數學大測二',
-      classes: ['4D', '5B'],
+      classes: ['4D', '5B', '高階數學建模'],
       adapter: 'exam_1113_store',
       script: 'js/exam_1113_scores.js',
       packType: 'major_exam',
@@ -144,14 +144,14 @@
     {
       id: 'quiz_1023',
       title: '1023 隨堂小測',
-      classes: ['4C', '4D', '5B'],
+      classes: ['4C', '4D', '5B', '高階數學建模'],
       adapter: 'quiz1023_store',
       script: 'js/quiz1023_encrypted_store.js',
     },
     {
       id: 'quiz_1030',
       title: '1030 加密考卷詳情',
-      classes: ['4C', '4D', '5B'],
+      classes: ['4C', '4D', '5B', '高階數學建模'],
       adapter: 'enc_folder',
       folder: 'quiz_results',
       indexFile: 'quiz_results/index.json',
@@ -160,7 +160,7 @@
     {
       id: 'quiz_1106',
       title: '1106 隨堂小測',
-      classes: ['4C', '4D', '5B', '5C'],
+      classes: ['4C', '4D', '5B', '5C', '高階數學建模'],
       adapter: 'sheet_live',
     },
   ];
@@ -170,7 +170,7 @@
       id: 'bonus_1113_exam2_4d',
       targetScorePackId: 'exam_1113_t2',
       sourceExamId: 'exam_1113_t2_correction',
-      classes: ['4D'],
+      classes: ['4D', '高階數學建模'],
       bonusMode: 'correction',
       maxCorrectionBonus: 5,
       capScore: 120,
@@ -179,7 +179,7 @@
       id: 'bonus_1113_exam2_5b',
       targetScorePackId: 'exam_1113_t2',
       sourceExamId: 'exam_1113_t2_correction',
-      classes: ['5B'],
+      classes: ['5B', '高階數學建模'],
       bonusMode: 'correction',
       maxCorrectionBonus: 5,
       capScore: 120,
@@ -188,7 +188,7 @@
       id: 'bonus_1106_4cd',
       targetScorePackId: 'quiz_1106',
       sourceExamId: 'drill_4cd_1102',
-      classes: ['4C', '4D'],
+      classes: ['4C', '4D', '高階數學建模'],
       threshold: 80,
       perPoint: 1,
       capScore: 60,
@@ -197,7 +197,7 @@
       id: 'bonus_1106_5bc',
       targetScorePackId: 'quiz_1106',
       sourceExamId: 'drill_5bc_1102',
-      classes: ['5B', '5C'],
+      classes: ['5B', '5C', '高階數學建模'],
       threshold: 80,
       perPoint: 1,
       capScore: 60,
@@ -241,6 +241,12 @@
       directToBank: true,
     };
   });
+  DEFAULT_EXTRA_ROSTER.push(
+    { id: 1, name: '李家裕', grade: 11, classID: '高階數學建模' },
+    { id: 2, name: '高文禧', grade: 11, classID: '高階數學建模' },
+    { id: 3, name: '麥子豪', grade: 11, classID: '高階數學建模' },
+    { id: 4, name: '周運成', grade: 11, classID: '高階數學建模' }
+  );
 
   const registry = {
     classes: deepClone(DEFAULT_CLASSES),
