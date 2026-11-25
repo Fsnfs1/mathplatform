@@ -53,7 +53,7 @@
 
     let defaultTransportFn = null;
     const postedSeqHistory = new Set();
-    let cachedIndex1030 = null;
+    const cachedIndexByFile = {};
 
     function getSubtleCrypto() {
       if (
@@ -437,18 +437,18 @@
       if (options && Array.isArray(options.indexData)) {
         return options.indexData;
       }
-      if (cachedIndex1030 && !(options && options.forceReload)) {
-        return cachedIndex1030;
-      }
       const relPath = indexFilePath || 'quiz_results/index.json';
+      if (cachedIndexByFile[relPath] && !(options && options.forceReload)) {
+        return cachedIndexByFile[relPath];
+      }
       if (typeof require === 'function') {
         try {
           const fs = require('fs');
           const path = require('path');
           const fullPath = path.resolve(__dirname, '..', relPath);
           const raw = fs.readFileSync(fullPath, 'utf8');
-          cachedIndex1030 = JSON.parse(raw);
-          return cachedIndex1030;
+          cachedIndexByFile[relPath] = JSON.parse(raw);
+          return cachedIndexByFile[relPath];
         } catch (e) {
           // fallback to fetch
         }
@@ -456,8 +456,8 @@
       if (typeof fetch === 'function') {
         const resp = await fetch(relPath, { cache: 'no-store' });
         if (resp && resp.ok) {
-          cachedIndex1030 = await resp.json();
-          return cachedIndex1030;
+          cachedIndexByFile[relPath] = await resp.json();
+          return cachedIndexByFile[relPath];
         }
       }
       return [];
@@ -834,6 +834,10 @@
             ? teacherOverride.newScore
             : Number(entry.score);
 
+        const filesList = Array.isArray(entry.files)
+          ? entry.files
+          : (entry.file ? [entry.file] : [`${classID}_${studentIDStr}.enc`]);
+
         const result = {
           ok: true,
           found: true,
@@ -846,7 +850,11 @@
           score: finalScore,
           origScore: Number(entry.score),
           timestamp: entry.timestamp || '',
-          file: entry.file || `${classID}_${studentIDStr}.enc`,
+          file: filesList[0] || `${classID}_${studentIDStr}.enc`,
+          files: filesList,
+          sections: entry.sections || null,
+          comment: entry.comment || '',
+          absent: Boolean(entry.absent),
           folder: packDef.folder || 'quiz_results',
           teacherAdjusted: Boolean(teacherOverride),
           record: Object.assign({}, entry, { score: finalScore, newTotal: finalScore }),

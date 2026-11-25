@@ -130,6 +130,15 @@
 
   const DEFAULT_SCORE_PACKS = [
     {
+      id: 'quiz_5b_1125',
+      title: '1125 4.2-4.3 小測（批改留痕）',
+      classes: ['5B'],
+      adapter: 'enc_folder',
+      folder: 'quiz_results_5b_1125',
+      indexFile: 'quiz_results_5b_1125/index.json',
+      saltPrefix: 'F4CD_1030_SECRET_',
+    },
+    {
       id: 'exam_1113_t2',
       title: '1113 數學大測二',
       classes: ['4D', '5B', '高階數學建模'],

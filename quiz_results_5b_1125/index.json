@@ -1,0 +1,668 @@
+[
+  {
+    "classID": "5B",
+    "studentID": "1",
+    "name": "吳鎂澄",
+    "score": 29,
+    "absent": false,
+    "sections": {
+      "s1": 12,
+      "s2": 0,
+      "s3": 9,
+      "s4": 8,
+      "s5": 0
+    },
+    "comment": "第11(1)題填表、第12(1)題及第12(2)題求通項公式表現不錯，也知道直線斜率為公差！待改進處：第2題a4=-54；第6題d=(23-3)/5=4；第7-10題基本公式與求和需全面鞏固；第11(2)題(n,an)應用虛線連接；第12(2)題應令3n-2=100求n；第14題計算需細心，第13、15、16題需加緊練習。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_1_p1.enc",
+    "files": [
+      "5B_1_p1.enc",
+      "5B_1_p2.enc"
+    ],
+    "iv": "BVsgPGJmnaoBC2oc",
+    "tag": "cbcbaHKGWl2Wa1NJNGaKWQ==",
+    "cipherLength": 448781
+  },
+  {
+    "classID": "5B",
+    "studentID": "2",
+    "name": "蘇子恩",
+    "score": 52,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 11,
+      "s4": 2,
+      "s5": 5
+    },
+    "comment": "選擇第1-4題、填空第6-8、10題及第11(1)(3)題、第15(1)題表現良好！待改進處：第5題應選C；第9題a5=6（非18）；第11(2)題需畫虛線連接(n,an)；第14(2)題求出n=10後記得再求公差d=4；第15(2)題18+56=74（非64）；第12、13、16題未完成，需留意時間分配。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_2_p1.enc",
+    "files": [
+      "5B_2_p1.enc",
+      "5B_2_p2.enc"
+    ],
+    "iv": "8V+nvdmm16aHiFF8",
+    "tag": "L0IHuNSj1BHowF5aWEn7Ow==",
+    "cipherLength": 391204
+  },
+  {
+    "classID": "5B",
+    "studentID": "3",
+    "name": "李潤歌",
+    "score": 0,
+    "absent": true,
+    "sections": {
+      "s1": 0,
+      "s2": 0,
+      "s3": 0,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "本次小測缺考",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "",
+    "files": []
+  },
+  {
+    "classID": "5B",
+    "studentID": "4",
+    "name": "李曉熹",
+    "score": 39,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 5,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "選擇題第1-4題與填空題第6-8、10題表現優秀，第10題正確算出6n-5！待改進處：第5題漏了q=1；第9題a5=√36=6；第11題b1=2^0=1（非2），作圖(n,an)需連虛線、(n,bₙ)需用×標記，且第11(3)題前三個空未填；第四、五大題未作答，需加強計算與解答題書寫訓練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_4_p1.enc",
+    "files": [
+      "5B_4_p1.enc",
+      "5B_4_p2.enc"
+    ],
+    "iv": "3P6hcezTUVfv1nZq",
+    "tag": "Bz7rdLQxgUJgpBCCDwVR4Q==",
+    "cipherLength": 368303
+  },
+  {
+    "classID": "5B",
+    "studentID": "5",
+    "name": "周鈺燕",
+    "score": 55,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 12,
+      "s5": 2
+    },
+    "comment": "選擇第1-4題、填空第6-8題、第11(1)(3)題、第12題及第14(1)題步驟清楚！待改進處：第5題應選C；第9題a5=6（非18）；第10題需用an=Sn-S(n-1)；第11(2)題需畫虛線連接(n,an)；第15(1)缺通項an=2n+16；第13、14(2)、15(2)(3)、16題未完成，需加強等比與解答題。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_5_p1.enc",
+    "files": [
+      "5B_5_p1.enc",
+      "5B_5_p2.enc"
+    ],
+    "iv": "AH117TYkS6IwotVK",
+    "tag": "iCQZ2Qcqqz5BQ7SLGGItLQ==",
+    "cipherLength": 382835
+  },
+  {
+    "classID": "5B",
+    "studentID": "6",
+    "name": "林煜皓",
+    "score": 43,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 9,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "選擇第1-4題、填空第6-8、10題及第11(1)(3)題掌握很好！待改進處：第5題漏了q=1；第9題a5=√36=6（非18）；第11(2)題需補畫(n,an)虛線及(n,bₙ)的「×」點；第四、五大題（第12-16題）全部未作答，務必加強計算與解答題的公式代入訓練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_6_p1.enc",
+    "files": [
+      "5B_6_p1.enc",
+      "5B_6_p2.enc"
+    ],
+    "iv": "3LKAM+o0KVrCrIkC",
+    "tag": "H6qMawiTYqOYUJCk4Phkig==",
+    "cipherLength": 358845
+  },
+  {
+    "classID": "5B",
+    "studentID": "7",
+    "name": "林穎豪",
+    "score": 42,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 8,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "選擇題第1-4題、填空題第6-8及10題、第11(1)題填表皆準確無誤！待改進處：第5題漏了q=1；第9題a5=√36=6；第11(2)題需用虛線連接(n,an)，第11(3)題前三個空未填寫；第四、五大題（第12-16題）完全未作答，務必加強計算與解答題的公式應用及解題練習。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_7_p1.enc",
+    "files": [
+      "5B_7_p1.enc",
+      "5B_7_p2.enc"
+    ],
+    "iv": "OvzF53CZSvXMYVcy",
+    "tag": "qSbnOL7ukBTogW4Pj2t9ng==",
+    "cipherLength": 363174
+  },
+  {
+    "classID": "5B",
+    "studentID": "8",
+    "name": "柯鈺鑫",
+    "score": 21,
+    "absent": false,
+    "sections": {
+      "s1": 20,
+      "s2": 0,
+      "s3": 0,
+      "s4": 1,
+      "s5": 0
+    },
+    "comment": "選擇題全對（20分滿分），概念判斷不錯！但填空題（第6-10題）、作圖題（第11題）及第12、15、16題完全空白，第13題混淆等差等比公式，第14題計算未完成。請務必把等差、等比通項與求和公式記熟並動手完成計算步驟。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_8_p1.enc",
+    "files": [
+      "5B_8_p1.enc",
+      "5B_8_p2.enc"
+    ],
+    "iv": "QoAWgZUPtQaLRWAr",
+    "tag": "9nh9wVjpc8QQz0QyGv8TBw==",
+    "cipherLength": 418099
+  },
+  {
+    "classID": "5B",
+    "studentID": "9",
+    "name": "洪泳棋",
+    "score": 54,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 12,
+      "s5": 1
+    },
+    "comment": "選擇題第1-4題、填空第6-8題、第11(1)(3)題、第12題及第14(1)題表現良好！待改進處：第5題S3=a3(1+1/q+1/q²)=6應解得q=1或-1/2；第9題a5=√(a3*a7)=6（非18）；第10題要用an=Sn-S(n-1)求得6n-5；第11(2)題需用虛線連接(n,an)；第13、14(2)、15、16題未完成，需加強等比數列求和及應用題訓練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_9_p1.enc",
+    "files": [
+      "5B_9_p1.enc",
+      "5B_9_p2.enc"
+    ],
+    "iv": "A0vitJQhJLlIT9pq",
+    "tag": "hChyWdiqP/WUa+haKUvfvw==",
+    "cipherLength": 391057
+  },
+  {
+    "classID": "5B",
+    "studentID": "10",
+    "name": "高尚禮",
+    "score": 78,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 11,
+      "s4": 24,
+      "s5": 9
+    },
+    "comment": "第四大題（第12-14題）全對，計算準確、步驟清晰，非常出色！待改進處：第5題S3=a3(1+1/q+1/q²)=6應選C(1或-1/2)；第9題a5=√36=6（非18）；第11(2)題需補上虛線連接(n,an)；第15(2)題補寫結論，第15(3)題需寫出二次方程過程及結論；第16題未作答，衝刺高分必練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_10_p1.enc",
+    "files": [
+      "5B_10_p1.enc",
+      "5B_10_p2.enc"
+    ],
+    "iv": "65jT0AuAENiB/xKF",
+    "tag": "mQHFLi+7P9tzy4DX1zy98A==",
+    "cipherLength": 449807
+  },
+  {
+    "classID": "5B",
+    "studentID": "11",
+    "name": "張啟赫",
+    "score": 29,
+    "absent": false,
+    "sections": {
+      "s1": 12,
+      "s2": 8,
+      "s3": 2,
+      "s4": 7,
+      "s5": 0
+    },
+    "comment": "第5題正確選出C，第6題、第12(1)題正確！待改進處：第1題選C、第3題選D(±6)；第7題a1=-3、第8題187、第9題a5=6、第10題6n-5；第11(1)b1=1，(2)(3)未作答；第12(2)題3n-2=100得n=34（勿漏負號）；第14(1)題需代求和公式；第13、15、16題需加強。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_11_p1.enc",
+    "files": [
+      "5B_11_p1.enc",
+      "5B_11_p2.enc"
+    ],
+    "iv": "rPqOIedszDpn0aSX",
+    "tag": "K/opldQ1WkNTNFLNyRgESw==",
+    "cipherLength": 428979
+  },
+  {
+    "classID": "5B",
+    "studentID": "12",
+    "name": "張嘉城",
+    "score": 33,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 6,
+      "s3": 7,
+      "s4": 0,
+      "s5": 4
+    },
+    "comment": "選擇第1-4題、第6題及第11(1)題表現不錯！待改進處：第5題應選C；第7、8、10題及第11(3)前3空需複習基本公式；第9題a5=6；第11(2)題(n,bₙ)應用「×」描點且(n,an)需畫虛線，留意座標順序；第15(1)缺通項公式，(2)缺結論；第12-14、16題未完成。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_12_p1.enc",
+    "files": [
+      "5B_12_p1.enc",
+      "5B_12_p2.enc"
+    ],
+    "iv": "r3osjTIQPLuNu7vC",
+    "tag": "VKM2Jy63nlHQUzgneolJWg==",
+    "cipherLength": 380275
+  },
+  {
+    "classID": "5B",
+    "studentID": "13",
+    "name": "梁泳心",
+    "score": 60,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 10,
+      "s5": 9
+    },
+    "comment": "選擇第1-4題、填空第6-8題、第11(1)(3)題、第14(1)題及第15(1)(2)題表現優秀！待改進處：第5題漏了q=1；第9題a5=√36=6；第10題需用Sn-S(n-1)；第11(2)題需畫虛線；第12(2)題要寫出通項公式an=3n-2；第15(3)題需寫出二次方程過程及結論；第13、14(2)、16題需補齊。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_13_p1.enc",
+    "files": [
+      "5B_13_p1.enc",
+      "5B_13_p2.enc"
+    ],
+    "iv": "Tdowj9ZuOTD7lj1C",
+    "tag": "tClQVXrJnqUImQ43FQfejg==",
+    "cipherLength": 413392
+  },
+  {
+    "classID": "5B",
+    "studentID": "14",
+    "name": "梁芷韻",
+    "score": 59,
+    "absent": false,
+    "sections": {
+      "s1": 20,
+      "s2": 18,
+      "s3": 8,
+      "s4": 6,
+      "s5": 7
+    },
+    "comment": "選擇題全對（20分滿分），第6-8、10題及第11(1)(3)題亦全對，基礎紮實！待改進處：第9題a5=√36=6；第11(2)題未完成坐標描點及虛線；第14(1)題19×5=95（非99），第14(2)題需寫出a10=5+9d=41求d；第15(2)題18+56=74，(3)缺方程過程；第12、13、16題需加強。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_14_p1.enc",
+    "files": [
+      "5B_14_p1.enc",
+      "5B_14_p2.enc"
+    ],
+    "iv": "FcuHChmD5IH5J/6e",
+    "tag": "oBCF8WkfeyWAA4XLVPx7zg==",
+    "cipherLength": 413538
+  },
+  {
+    "classID": "5B",
+    "studentID": "15",
+    "name": "梁偉烽",
+    "score": 55,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 14,
+      "s5": 0
+    },
+    "comment": "基礎題（選擇第1-4題、填空第6-8題、第11(1)(3)題、第12題及第14(1)題）表現穩定！待改進處：第5題漏了q=1；第9題a5=√36=6（非36/2）；第10題需用an=Sn-S(n-1)；第11(2)題需用虛線連接(n,an)；第13題僅算出a5，第14(2)、15、16題未完成，需加強作答速度與解答題訓練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_15_p1.enc",
+    "files": [
+      "5B_15_p1.enc",
+      "5B_15_p2.enc"
+    ],
+    "iv": "vR125VcHaoeAcezO",
+    "tag": "D0fOMq7PpdvkB7uJHpWElg==",
+    "cipherLength": 397001
+  },
+  {
+    "classID": "5B",
+    "studentID": "16",
+    "name": "姚皓然",
+    "score": 38,
+    "absent": false,
+    "sections": {
+      "s1": 12,
+      "s2": 4,
+      "s3": 5,
+      "s4": 10,
+      "s5": 7
+    },
+    "comment": "第14(1)題及第15(1)(2)題步驟清楚，做得好！待改進處：第3題等比中項為±6，第5題漏了q=1；第7-10題填空基本公式需熟記；第11(1)題b1=1（非0），(2)缺虛線，(3)前3空未填；第12(2)題解3n-2=100應得n=34；第13題誤用等差公式；第14(2)、15(3)、16題需多加練習。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_16_p1.enc",
+    "files": [
+      "5B_16_p1.enc",
+      "5B_16_p2.enc"
+    ],
+    "iv": "HcNmoiBTrl3I5M1t",
+    "tag": "8gyYkeyjk7OAJSs6r2iKPQ==",
+    "cipherLength": 472903
+  },
+  {
+    "classID": "5B",
+    "studentID": "17",
+    "name": "陳施攸",
+    "score": 55,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 12,
+      "s5": 2
+    },
+    "comment": "選擇第1-4題、填空第6-8題、第11(1)(3)題、第12題及第14(1)題計算準確！待改進處：第5題應選C；第9題a5=6；第10題用an=Sn-S(n-1)；第11(2)題需畫虛線；第13(1)題2×3^4=162（非102）且漏求S5；第15(1)缺an=2n+16，(2)74×20=1480致S20=740；第13(2)、14(2)、15(3)、16題需加強。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_17_p1.enc",
+    "files": [
+      "5B_17_p1.enc",
+      "5B_17_p2.enc"
+    ],
+    "iv": "VIP2FXzG1KVShbtD",
+    "tag": "TB+sfUtS9YB0jlwdH+/BvQ==",
+    "cipherLength": 393275
+  },
+  {
+    "classID": "5B",
+    "studentID": "18",
+    "name": "陳柏琳",
+    "score": 56,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 14,
+      "s5": 1
+    },
+    "comment": "選擇題第1-4題、填空第6-8題、第11(1)(3)題、第12題及第14(1)題掌握不錯！待改進處：第5題漏了q=1；第9題a5應為√36=6；第10題需用Sn-S(n-1)求通項；第11(2)題需補上虛線連接(n,an)；第15(1)題展開18+2(n-1)應為2n+16（非2n-16）；第13、14(2)、15(3)、16題未完成，需注意化簡符號。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_18_p1.enc",
+    "files": [
+      "5B_18_p1.enc",
+      "5B_18_p2.enc"
+    ],
+    "iv": "crBonicHskqCpa+A",
+    "tag": "JiA/b7mKWiqp3JVDP6nkjQ==",
+    "cipherLength": 435999
+  },
+  {
+    "classID": "5B",
+    "studentID": "19",
+    "name": "陳國良",
+    "score": 39,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 5,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "選擇第1-4題及填空第6-8、10題正確率高！待改進處：第5題應選C；第9題a5=6（非18）；第11(1)題b1=2^0=1（非2），第11(2)題需連虛線並用「×」描(n,bₙ)；第11(3)題及第四、五大題（第12-16題）全未作答，需加強後段大題的解題訓練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_19_p1.enc",
+    "files": [
+      "5B_19_p1.enc",
+      "5B_19_p2.enc"
+    ],
+    "iv": "mCBZ2CIIqIE6HsWb",
+    "tag": "4BwOZiQY28Qm1a6EztKW/w==",
+    "cipherLength": 380354
+  },
+  {
+    "classID": "5B",
+    "studentID": "20",
+    "name": "陳紫涵",
+    "score": 32,
+    "absent": false,
+    "sections": {
+      "s1": 12,
+      "s2": 6,
+      "s3": 6,
+      "s4": 8,
+      "s5": 0
+    },
+    "comment": "第14(1)題及第13(1)題求a5正確！待改進處：第3題等比中項為±6，第5題應選C；第7、8、10題公式需加強，第9題a5=6；第11題b1=1（非0）且缺虛線與前3空；第12題留意a3=a1+2d及分辨求通項與代入值；第13(1)S5代錯公式；第14(2)、15、16題需加緊練習。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_20_p1.enc",
+    "files": [
+      "5B_20_p1.enc",
+      "5B_20_p2.enc"
+    ],
+    "iv": "F9C4HFxEVc3bzYRN",
+    "tag": "IhAJISH/9nqWgiDqQULShg==",
+    "cipherLength": 416111
+  },
+  {
+    "classID": "5B",
+    "studentID": "21",
+    "name": "陳鑫源",
+    "score": 36,
+    "absent": false,
+    "sections": {
+      "s1": 12,
+      "s2": 18,
+      "s3": 6,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "填空題第6-8、10題表現優秀！待改進處：第4題a6=(a3+a9)/2=12，第5題應選C；第9題a5=6（非16）；第11(1)題b1=1（非0），第11(2)題缺虛線，第11(3)題前3空未填；第四、五大題（第12-16題）全部未作答，需加強計算與解答題的書寫訓練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_21_p1.enc",
+    "files": [
+      "5B_21_p1.enc",
+      "5B_21_p2.enc"
+    ],
+    "iv": "xnM4dsKM65a4/zLG",
+    "tag": "cvQTJGkZGqrlbvbdzI+d2A==",
+    "cipherLength": 370596
+  },
+  {
+    "classID": "5B",
+    "studentID": "22",
+    "name": "彭婷婷",
+    "score": 39,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 10,
+      "s3": 12,
+      "s4": 1,
+      "s5": 0
+    },
+    "comment": "作圖題第11題全對（12分滿分），選擇第1-4題表現良好！（註：卷面學號誤寫20，應為22）待改進處：第5題應選C；第8題應為187，第9題a5=6，第10題用Sn-S(n-1)；第12題(-15)/(-5)=3（非-3）致後續全錯；第14(1)題a1=-12勿漏負號；第13、15、16題需補練。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_22_p1.enc",
+    "files": [
+      "5B_22_p1.enc",
+      "5B_22_p2.enc"
+    ],
+    "iv": "adDFfFIq0tzVCFZb",
+    "tag": "R+w1QEogfc8o8uRmYCCyqQ==",
+    "cipherLength": 399379
+  },
+  {
+    "classID": "5B",
+    "studentID": "23",
+    "name": "黃少彬",
+    "score": 39,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 18,
+      "s3": 5,
+      "s4": 0,
+      "s5": 0
+    },
+    "comment": "選擇第1-4題及填空第6-8、10題表現穩定！待改進處：第5題漏了q=1；第9題a5=6（非18）；第11(1)題b1=2^0=1（非2），第11(2)題需連虛線並核對(n,bₙ)點位；第11(3)題及第四、五大題（第12-16題）全未作答，務必多練習計算與解答題。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_23_p1.enc",
+    "files": [
+      "5B_23_p1.enc",
+      "5B_23_p2.enc"
+    ],
+    "iv": "Hi3lVH8mVFs8blkX",
+    "tag": "cVOVzYOoVh9wz51+kFUUrA==",
+    "cipherLength": 371563
+  },
+  {
+    "classID": "5B",
+    "studentID": "24",
+    "name": "黃卓琳",
+    "score": 35,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 6,
+      "s3": 5,
+      "s4": 8,
+      "s5": 0
+    },
+    "comment": "第5題正確選出q=1或-1/2，第14(1)題計算正確，值得肯定！待改進處：第3題等比中項為±6；第7題q=-2、a1=-3；第8題總和為187；第9題a5=6；第10題用an=Sn-S(n-1)；第11題b1=1（非0）且缺虛線；第12題留意a3=a1+2d及分辨求通項與代入值；第13(1)S5代錯指數，第15、16題未完成。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_24_p1.enc",
+    "files": [
+      "5B_24_p1.enc",
+      "5B_24_p2.enc"
+    ],
+    "iv": "DEoirQbC+xp2q8b8",
+    "tag": "9/iH9De3YWMf8crvoyGPrQ==",
+    "cipherLength": 471435
+  },
+  {
+    "classID": "5B",
+    "studentID": "25",
+    "name": "黃婉瑜",
+    "score": 48,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 6,
+      "s5": 1
+    },
+    "comment": "選擇第1-4題、填空第6-8題及第11(1)(3)題掌握不錯！待改進處：第5題應選C；第9題a5=6；第10題需用an=Sn-S(n-1)；第11(2)題需補虛線；第12(2)題求得an=3n-2後應令其等於100求n（非代n=20）；第15(1)題a20=18+19×2=56（非36）；第13、14、16題需加強練習。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_25_p1.enc",
+    "files": [
+      "5B_25_p1.enc",
+      "5B_25_p2.enc"
+    ],
+    "iv": "Me8IJ4gBXYyuCSBb",
+    "tag": "cD5GnSZbwtLxbG2AcjWEXA==",
+    "cipherLength": 390240
+  },
+  {
+    "classID": "5B",
+    "studentID": "26",
+    "name": "葉棨釗",
+    "score": 54,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 12,
+      "s3": 8,
+      "s4": 14,
+      "s5": 4
+    },
+    "comment": "第5題、第13(1)題與第12題計算掌握不錯！待改進處：第3題等比中項為±6；第7題q=-2；第9題a5=6；第10題需用an=Sn-S(n-1)；第11(2)題缺虛線，(3)需填函數式及公差；第12(2)與15(2)題別漏結論句；第14(1)題a20=83（非87）；第13(2)、14(2)、15(3)、16題需補齊。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_26_p1.enc",
+    "files": [
+      "5B_26_p1.enc",
+      "5B_26_p2.enc"
+    ],
+    "iv": "pBr1RflbO7nbkToI",
+    "tag": "rzr6RMBRLmJdyYJ9VSVrkA==",
+    "cipherLength": 418420
+  },
+  {
+    "classID": "5B",
+    "studentID": "27",
+    "name": "潘子聰",
+    "score": 28,
+    "absent": false,
+    "sections": {
+      "s1": 12,
+      "s2": 2,
+      "s3": 5,
+      "s4": 4,
+      "s5": 5
+    },
+    "comment": "第11(1)題填表及第14(1)題正確！待改進處：第4、5題及第6-10題等差等比基本性質需複習；第11(2)題未作圖，(3)前3空未填；第12題未作答，第13(2)題誤用等差公式；第15(1)缺a20，(2)缺結論，(3)方程錯；第16題未作答，需多練基本公式代入。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_27_p1.enc",
+    "files": [
+      "5B_27_p1.enc",
+      "5B_27_p2.enc"
+    ],
+    "iv": "xlgmgOWEDQqTPz37",
+    "tag": "gatg695Y01Xx3D5yIjDR0Q==",
+    "cipherLength": 406355
+  },
+  {
+    "classID": "5B",
+    "studentID": "28",
+    "name": "黎宛旻",
+    "score": 55,
+    "absent": false,
+    "sections": {
+      "s1": 16,
+      "s2": 14,
+      "s3": 11,
+      "s4": 12,
+      "s5": 2
+    },
+    "comment": "選擇第1-4題、填空第6-8題、第11(1)(3)題、第12題及第14(1)題表現良好！待改進處：第5題應選C；第9題a5=√36=6（非18）；第10題需用an=Sn-S(n-1)求得6n-5；第11(2)題需畫虛線連接(n,an)；第15(1)缺通項an=2n+16；第13、14(2)、15(2)(3)、16題需多練習。",
+    "timestamp": "2026-11-25 16:00:00",
+    "file": "5B_28_p1.enc",
+    "files": [
+      "5B_28_p1.enc",
+      "5B_28_p2.enc"
+    ],
+    "iv": "jMNzUdmJSweOAEV7",
+    "tag": "rQl69L+O7NxtevgUzTv7NQ==",
+    "cipherLength": 393754
+  }
+]

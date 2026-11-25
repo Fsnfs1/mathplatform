@@ -286,6 +286,7 @@
       </div>
       <div id="scorePackTabs" class="d-flex gap-2 flex-wrap mb-3"></div>
       <div id="scoreDetailBox" class="p-3 bg-light rounded border mb-3"></div>
+      <div id="scorePaperTraceBox" class="mb-3"></div>
       <h6 class="fw-bold">🏆 測驗成績排名（依教師設定呈現姓名格式）</h6>
       <div id="examLeaderboardBox"></div>
     </div>
@@ -1608,6 +1609,7 @@
       function logout() {
         teardownGameIframe();
         stopGateCamera();
+        clearTracePreviewBox();
         gateCapturedSnap = null;
         gateCloseCandidates = [];
         lastLivenessFailTs = 0;
@@ -2425,9 +2427,125 @@
         showScreen('screen-me');
       }
 
+      let activeTraceUrls = [];
+      let activeTraceRenderToken = 0;
+
+      function clearTracePreviewBox() {
+        activeTraceRenderToken++;
+        activeTraceUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+        activeTraceUrls = [];
+        const traceBox = document.getElementById('scorePaperTraceBox');
+        if (traceBox) traceBox.innerHTML = '';
+      }
+
+      async function renderEncryptedTraceCard(loaded, student, renderToken) {
+        const traceBox = document.getElementById('scorePaperTraceBox');
+        if (!traceBox) return;
+        if (!loaded || loaded.adapter !== 'enc_folder' || loaded.found === false) {
+          traceBox.innerHTML = '';
+          return;
+        }
+        const sec = loaded.sections;
+        const secHtml = sec ? `
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <span class="badge bg-light text-dark border">一、選擇題：${esc(sec.s1)} / 20</span>
+            <span class="badge bg-light text-dark border">二、填空題：${esc(sec.s2)} / 20</span>
+            <span class="badge bg-light text-dark border">三、作圖題：${esc(sec.s3)} / 12</span>
+            <span class="badge bg-light text-dark border">四、計算題：${esc(sec.s4)} / 24</span>
+            <span class="badge bg-light text-dark border">五、解答題：${esc(sec.s5)} / 24</span>
+          </div>
+        ` : '';
+        const commentHtml = loaded.comment ? `
+          <div class="alert alert-danger py-2 px-3 small mb-2" style="background:#fff5f5;border-color:#f5c2c7;color:#842029;">
+            <strong>👩‍🏫 教師總評：</strong>${esc(loaded.comment)}
+          </div>
+        ` : '';
+        const filesList = Array.isArray(loaded.files) && loaded.files.length > 0
+          ? loaded.files
+          : (loaded.file ? [loaded.file] : []);
+
+        if (loaded.absent || filesList.length === 0) {
+          traceBox.innerHTML = `
+            <div class="card border-warning shadow-sm">
+              <div class="card-body py-3">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <h6 class="fw-bold mb-0">📝 ${esc(loaded.title)} — 個人批改留痕</h6>
+                  <span class="badge bg-secondary">${esc(student.classID)} 班 ${esc(student.studentID)} 號 ${esc(student.name)}</span>
+                </div>
+                <div class="alert alert-warning mb-0 py-2 small">本次小測紀錄為缺考，暫無批改留痕試卷影像。</div>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        traceBox.innerHTML = `
+          <div class="card border-primary-subtle shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <h6 class="fw-bold mb-0">📝 ${esc(loaded.title)} — 個人批改留痕</h6>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">🔒 僅限 ${esc(student.classID)} 班 ${esc(student.studentID)} 號 ${esc(student.name)} 本人查看</span>
+              </div>
+              ${secHtml}
+              ${commentHtml}
+              <div id="encTraceImagesWrap" class="row g-3 mt-1">
+                <div class="col-12 text-muted small">🔐 正在使用個人加密金鑰解密您的批改試卷影像，請稍候...</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const wrap = document.getElementById('encTraceImagesWrap');
+        if (!wrap || !window.MathCoreApi || typeof MathCoreApi.decryptEncPaper !== 'function') return;
+
+        try {
+          const folder = loaded.folder || 'quiz_results';
+          const pageCards = [];
+          for (let i = 0; i < filesList.length; i++) {
+            const fname = filesList[i];
+            const url = `${folder}/${fname}?t=${Date.now()}`;
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (!resp || !resp.ok) {
+              throw new Error(`無法讀取加密檔案 ${fname}`);
+            }
+            const encBuf = await resp.arrayBuffer();
+            const plainBytes = await MathCoreApi.decryptEncPaper(
+              encBuf,
+              student.classID,
+              student.studentID,
+              student.passcode || ''
+            );
+            if (renderToken !== activeTraceRenderToken) return;
+            const blobUrl = URL.createObjectURL(new Blob([plainBytes], { type: 'image/jpeg' }));
+            activeTraceUrls.push(blobUrl);
+            const pageLabel = filesList.length > 1 ? `第 ${i + 1} 面（共 ${filesList.length} 面）` : '批改留痕試卷';
+            pageCards.push(`
+              <div class="col-12">
+                <div class="border rounded bg-white p-2">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small fw-semibold text-secondary">${esc(pageLabel)}</span>
+                    <a class="btn btn-outline-primary btn-sm py-0 px-2" href="${blobUrl}" target="_blank" rel="noopener">🔍 新分頁放大查看</a>
+                  </div>
+                  <img src="${blobUrl}" alt="${esc(pageLabel)}" class="img-fluid rounded border w-100" style="background:#fff;" />
+                </div>
+              </div>
+            `);
+          }
+          if (renderToken === activeTraceRenderToken) {
+            wrap.innerHTML = pageCards.join('');
+          }
+        } catch (err) {
+          if (renderToken === activeTraceRenderToken) {
+            wrap.innerHTML = `<div class="col-12"><div class="alert alert-danger py-2 small mb-0">❌ 試卷影像解密失敗：${esc((err && err.message) || '請確認登入狀態或稍後再試')}</div></div>`;
+          }
+        }
+      }
+
       async function renderScorePack(packId) {
         if (!currentStudent) return;
         activeScorePackId = packId;
+        clearTracePreviewBox();
+        const myTraceToken = activeTraceRenderToken;
         const sid = currentStudent.classID + '_' + currentStudent.studentID;
         document.querySelectorAll('#scorePackTabs button').forEach(btn => {
           const isAct = btn.getAttribute('data-pack-id') === packId;
@@ -2442,11 +2560,13 @@
         let rawScore = 0;
         let hasRecord = false;
         let loadedCorrectionBonus = 0;
+        let loadedPack = null;
 
         if (window.MathCoreApi && typeof MathCoreApi.loadScorePack === 'function') {
           try {
             const loaded = await MathCoreApi.loadScorePack(packId, currentStudent);
             if (activeScorePackId !== packId) return;
+            loadedPack = loaded;
             if (loaded && loaded.ok && (loaded.found !== false)) {
               const r = loaded.record || loaded;
               const val = loaded.score !== undefined && loaded.score !== null
@@ -2553,6 +2673,7 @@
             </div>
           `;
         }
+        renderEncryptedTraceCard(loadedPack, currentStudent, myTraceToken);
 
         // Render Leaderboard respecting teacher display mode (Section 六)
         const displayMode = localStorage.getItem('MP_V2_RANK_DISPLAY_MODE') || 'real_name';
