@@ -648,7 +648,25 @@
     // =========================================================================
     const CLASS_REPS_KEY = "MP_V2_CLASS_REPS";
 
-    function getClassReps() {
+    const DEFAULT_CLASS_REPS = {
+      "5B_10": {
+        sid: "5B_10",
+        classID: "5B",
+        studentID: "10",
+        name: "高尚禮",
+        repPin: "rep2026",
+        permissions: ["reply_qa", "approve_mall", "tune_score", "set_rules"],
+        updatedAt: 1795656000000,
+      },
+    };
+
+    function normalizeRepStudentId(val) {
+      const s = String(val === undefined || val === null ? "" : val).trim();
+      if (/^\d+$/.test(s)) return String(parseInt(s, 10));
+      return s;
+    }
+
+    function getRawStoredClassReps() {
       if (STORAGE && typeof STORAGE.getItem === "function") {
         const map = STORAGE.getItem(CLASS_REPS_KEY, {});
         return map && typeof map === "object" ? map : {};
@@ -656,18 +674,36 @@
       return {};
     }
 
+    function getClassReps() {
+      const stored = getRawStoredClassReps();
+      const merged = {};
+      Object.keys(DEFAULT_CLASS_REPS).forEach(function (k) {
+        merged[k] = Object.assign({}, DEFAULT_CLASS_REPS[k]);
+      });
+      Object.keys(stored).forEach(function (k) {
+        const item = stored[k];
+        if (!item || typeof item !== "object") return;
+        if (item._removed) {
+          delete merged[k];
+        } else {
+          merged[k] = Object.assign({}, item);
+        }
+      });
+      return merged;
+    }
+
     function setClassRep(params) {
       const p = params || {};
       const classID = String(p.classID || "").trim().toUpperCase();
-      const studentID = String(p.studentID || "").trim();
+      const studentID = normalizeRepStudentId(p.studentID);
       if (!classID || !studentID) throw new Error("請指定科代表的班別與學號");
       const sid = `${classID}_${studentID}`;
       const repPin = String(p.repPin || p.pin || "rep123").trim();
       const permissions = Array.isArray(p.permissions)
         ? p.permissions.slice()
         : ["reply_qa", "approve_mall"];
-      const map = getClassReps();
-      map[sid] = {
+      const stored = getRawStoredClassReps();
+      stored[sid] = {
         sid: sid,
         classID: classID,
         studentID: studentID,
@@ -677,22 +713,26 @@
         updatedAt: Date.now(),
       };
       if (STORAGE && typeof STORAGE.setItem === "function") {
-        STORAGE.setItem(CLASS_REPS_KEY, map);
+        STORAGE.setItem(CLASS_REPS_KEY, stored);
       }
-      return map[sid];
+      return stored[sid];
     }
 
     function removeClassRep(sidOrClass, optionalStudentID) {
-      const map = getClassReps();
+      const stored = getRawStoredClassReps();
       const key =
         optionalStudentID !== undefined
-          ? `${String(sidOrClass || "").trim().toUpperCase()}_${String(optionalStudentID).trim()}`
+          ? `${String(sidOrClass || "").trim().toUpperCase()}_${normalizeRepStudentId(optionalStudentID)}`
           : String(sidOrClass || "").trim().toUpperCase();
-      if (map[key]) {
-        delete map[key];
-        if (STORAGE && typeof STORAGE.setItem === "function") {
-          STORAGE.setItem(CLASS_REPS_KEY, map);
-        }
+      const existedInDefault = Boolean(DEFAULT_CLASS_REPS[key]);
+      const existedInStored = Boolean(stored[key] && !stored[key]._removed);
+      if (existedInDefault) {
+        stored[key] = { _removed: true, updatedAt: Date.now() };
+      } else if (stored[key]) {
+        delete stored[key];
+      }
+      if ((existedInDefault || existedInStored) && STORAGE && typeof STORAGE.setItem === "function") {
+        STORAGE.setItem(CLASS_REPS_KEY, stored);
         return true;
       }
       return false;
@@ -701,7 +741,7 @@
     function loginClassRep(params) {
       const p = params || {};
       const classID = String(p.classID || "").trim().toUpperCase();
-      const studentID = String(p.studentID || "").trim();
+      const studentID = normalizeRepStudentId(p.studentID);
       const sid = `${classID}_${studentID}`;
       const pin = String(p.repPin || p.pin || p.password || "").trim();
       const map = getClassReps();
